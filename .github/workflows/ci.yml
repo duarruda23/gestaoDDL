@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  app:
+    name: App (tipos, lint, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # versão lida de package.json#packageManager
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm build
+
+  banco:
+    name: Banco (migrações + regras)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: gestao_donas
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci -d gestao_donas"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://ci:ci@localhost:5432/gestao_donas
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Migrações batem com o schema
+        run: pnpm db:check
+      - name: Aplicar migrações
+        run: pnpm db:migrate
+      - name: Aplicar de novo não muda nada
+        run: pnpm db:migrate
+      - name: Testar regras do banco
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/teste-regras.sql

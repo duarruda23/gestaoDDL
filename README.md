@@ -60,6 +60,17 @@ Botão "Claro/Escuro" no topo troca o tema (escuro é o padrão, como o site).
 - `lib/interpretar-simulado.ts`: interpretador por regras (fallback)
 - `app/api/interpretar/route.ts`: única rota de servidor; chama a IA escolhida em `lib/provedor-ia.ts` (chaves só no servidor)
 
+## Banco e infraestrutura (Fase 3)
+
+O protótipo ainda roda com dados no navegador. O sistema real já tem a base pronta:
+
+- `db/schema.ts`: tabelas em Drizzle (Postgres 17). Migrações em `drizzle/` (`pnpm db:generate`, `pnpm db:migrate`, `pnpm db:check`).
+- `db/teste-regras.sql`: testa no banco as regras que não podem falhar (um único dono, histórico imutável, remover acesso encerra sessões, idempotência das mensagens...).
+- `infra/`: Docker + Traefik para a VPS, backup diário e passo a passo em `infra/README.md`.
+- `.github/workflows/ci.yml`: a cada push, tipos + lint + build e migrações + teste de regras num Postgres descartável.
+
+Arquitetura completa: nota `gestao-donas-de-loja-arquitetura` no vault.
+
 ## Limites (é protótipo)
 
 - Dados ficam no navegador de quem usa; não há senha (a conta escolhida fica lembrada).
