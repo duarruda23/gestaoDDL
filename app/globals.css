@@ -37,6 +37,11 @@
   --focus: var(--brand);
   --link: var(--brand-text);
   --shadow-overlay: 0 12px 32px rgba(0,0,0,0.6);
+  --chrome: rgba(10,10,10,0.72);
+  --chrome-edge: rgba(255,255,255,0.08);
+  --scrim: rgba(0,0,0,0.55);
+  --toast-acao: #d43e1a; /* sobre o aviso branco do tema escuro: 4,66:1 */
+  --ease-mola: cubic-bezier(0.2, 0.8, 0.2, 1);
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -77,6 +82,10 @@
   --info: #1d4ed8;
   --info-soft: #dbeafe;
   --shadow-overlay: 0 12px 32px rgba(10,10,10,0.14);
+  --chrome: rgba(247,246,244,0.78);
+  --chrome-edge: rgba(10,10,10,0.06);
+  --scrim: rgba(10,10,10,0.35);
+  --toast-acao: #f04e23; /* sobre o aviso preto do tema claro: 5,49:1 */
 }
 
 @theme inline {
@@ -254,4 +263,118 @@ textarea.dl-input { min-height: 88px; resize: vertical; }
 .dl-nav-link:focus-visible, .dl-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .dl-link { color: var(--brand-text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .dl-code { font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: var(--ink-subtle); }
+}
+
+/* ================================================================
+   Passe de design (skill apple-design, 24/09)
+   ================================================================ */
+
+@layer components {
+  /* Tipografia: tracking por tamanho. Grande aperta, pequeno abre. */
+  .dl-heading { letter-spacing: -0.02em; line-height: 1.15; }
+  .dl-stat-value { letter-spacing: -0.03em; }
+  .dl-card-title { letter-spacing: -0.005em; }
+
+  /* Resposta no toque: o cartão reage ao encostar, não ao soltar. */
+  .dl-card { transition: border-color .15s, transform .1s ease-out; }
+  .dl-card:active { transform: scale(0.99); }
+  .dl-nav-link { transition: background-color .15s, color .15s, transform .1s ease-out; }
+  .dl-nav-link:active { transform: scale(0.96); }
+
+  /* Painéis que aparecem ancorados no botão que os chamou (origem no topo). */
+  .dl-surgir { transform-origin: top left; animation: dl-surgir 240ms var(--ease-mola) both; }
+}
+
+@keyframes dl-surgir {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Chrome, abas, folha e avisos também na camada components, para as
+   utilitárias do Tailwind (ex.: md:hidden) poderem sobrescrever. */
+@layer components {
+/* Material translúcido: o conteúdo passa por baixo da barra. */
+.dl-chrome {
+  background: var(--chrome);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+/* Borda de rolagem: sem linha fixa; um esfumado só quando há conteúdo por baixo. */
+.dl-chrome-top { position: relative; }
+.dl-chrome-top::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 12px; pointer-events: none;
+  background: linear-gradient(to bottom, var(--chrome-edge), transparent);
+  opacity: 0; transition: opacity .2s;
+}
+.dl-chrome-top[data-rolou="sim"]::after { opacity: 1; }
+
+/* Barra de abas no celular: ao alcance do polegar. */
+.dl-tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--chrome-edge);
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
+}
+.dl-tab {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-height: 48px; border-radius: var(--radius-xl); border: 0; background: transparent;
+  font-family: var(--font-sans); font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.01em;
+  color: var(--ink-muted); text-decoration: none; cursor: pointer;
+  transition: color .15s, transform .1s ease-out;
+}
+.dl-tab:active { transform: scale(0.94); }
+.dl-tab svg { width: 22px; height: 22px; }
+.dl-tab[aria-current="page"] { color: var(--brand-text); }
+.dl-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.dl-tab-pedir { color: var(--on-brand); }
+.dl-tab-pedir .dl-tab-bolha {
+  display: flex; align-items: center; justify-content: center; width: 40px; height: 32px;
+  border-radius: var(--radius-full); background: var(--brand-action);
+}
+.dl-tab-pedir span:last-child { color: var(--ink-muted); }
+
+/* Folha "Mais": escurece o fundo (tarefa modal) e sobe da barra. */
+.dl-scrim { position: fixed; inset: 0; z-index: 40; background: var(--scrim); }
+.dl-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
+  padding: 8px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  background: var(--surface-raised); box-shadow: var(--shadow-overlay);
+  touch-action: none;
+}
+.dl-sheet-alca { width: 40px; height: 5px; border-radius: var(--radius-full); background: var(--line-control); margin: 4px auto 12px; }
+
+/* Avisos com "Desfazer": entram e saem pelo mesmo caminho (de baixo). */
+.dl-toasts {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 50;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: 8px; width: min(440px, calc(100vw - 32px));
+}
+@media (max-width: 767px) { .dl-toasts { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); } }
+.dl-toast {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 10px 10px 16px; border-radius: var(--radius-xl);
+  background: var(--ink); color: var(--surface); box-shadow: var(--shadow-overlay);
+  font-size: 14px; line-height: 20px; font-weight: 600;
+}
+.dl-toast button {
+  font-family: var(--font-sans); border: 0; cursor: pointer; border-radius: var(--radius-lg);
+  padding: 6px 12px; font-size: 13px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase;
+  background: transparent; color: var(--toast-acao);
+}
+.dl-toast button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+}
+
+/* Acessibilidade: menos movimento, menos transparência, mais contraste. */
+@media (prefers-reduced-motion: reduce) {
+  .dl-surgir { animation: dl-aparecer 160ms ease both; }
+  .dl-card:active, .dl-nav-link:active, .dl-tab:active { transform: none; }
+}
+@keyframes dl-aparecer { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-transparency: reduce) {
+  .dl-chrome { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-contrast: more) {
+  :root { --line: var(--line-control); --chrome: var(--surface); }
+  .dl-chrome { -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--line-control); }
 }

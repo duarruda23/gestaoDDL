@@ -109,6 +109,7 @@ interface ContextoGestao extends EstadoApp {
   editarTarefa: (id: string, versaoEsperada: number, edicao: EdicaoTarefa) => ResultadoEdicao;
   mudarEstado: (id: string, para: Estado, motivo?: string) => ResultadoEdicao;
   arquivar: (id: string) => void;
+  desarquivar: (id: string) => void;
   comentar: (id: string, texto: string) => void;
   alternarChecklist: (tarefaId: string, itemId: string) => void;
   simularEdicaoExterna: (id: string) => void;
@@ -432,9 +433,27 @@ export function GestaoProvider({ children }: { children: React.ReactNode }) {
         return {
           ...s,
           tarefas: s.tarefas.map((t) =>
-            t.id === id ? { ...t, estado: "arquivada", versao: t.versao + 1, atualizadoEm: agoraISO() } : t
+            t.id === id ? { ...t, estado: "arquivada", estadoAnterior: t.estado, versao: t.versao + 1, atualizadoEm: agoraISO() } : t
           ),
           eventos: [evento(id, "estado", atual.estado, "arquivada"), ...s.eventos],
+        };
+      });
+    },
+    [evento]
+  );
+
+  const desarquivar = useCallback(
+    (id: string) => {
+      setEstado((s) => {
+        const atual = s.tarefas.find((t) => t.id === id);
+        if (!atual || atual.estado !== "arquivada") return s;
+        const volta = atual.estadoAnterior ?? "a_fazer";
+        return {
+          ...s,
+          tarefas: s.tarefas.map((t) =>
+            t.id === id ? { ...t, estado: volta, estadoAnterior: null, versao: t.versao + 1, atualizadoEm: agoraISO() } : t
+          ),
+          eventos: [evento(id, "estado", "arquivada", `${volta} — desfez o arquivamento`), ...s.eventos],
         };
       });
     },
@@ -623,6 +642,7 @@ export function GestaoProvider({ children }: { children: React.ReactNode }) {
       editarTarefa,
       mudarEstado,
       arquivar,
+      desarquivar,
       comentar,
       alternarChecklist,
       simularEdicaoExterna,
@@ -636,7 +656,7 @@ export function GestaoProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       estado, carregado, usuarioAtual, entrar, sair, criarConta, cobrar, registrarPedido, descartarProposta,
-      confirmarProposta, criarManual, editarTarefa, mudarEstado, arquivar, comentar,
+      confirmarProposta, criarManual, editarTarefa, mudarEstado, arquivar, desarquivar, comentar,
       alternarChecklist, simularEdicaoExterna, rodarCobrancasAgora, reenviarMensagem,
       alternarPausa, removerAcesso, restaurarAcesso, definirGerenciaAcessos, resetar,
     ]

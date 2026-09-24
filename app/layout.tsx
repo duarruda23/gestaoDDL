@@ -4,6 +4,7 @@ import "./globals.css";
 import { GestaoProvider } from "@/lib/store";
 import { Nav } from "@/components/Nav";
 import { ExigeConta } from "@/components/ExigeConta";
+import { AvisosProvider } from "@/components/Avisos";
 
 const montserrat = Montserrat({
   variable: "--font-montserrat",
@@ -29,13 +30,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full flex flex-col">
         <GestaoProvider>
+          <AvisosProvider>
           <ExigeConta>
             <Nav />
-            <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-16">{children}</main>
-            <footer className="text-center text-xs text-ink-subtle py-6 px-4">
+            <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-28 md:pb-16">{children}</main>
+            <footer className="text-center text-xs text-ink-subtle py-6 px-4 pb-28 md:pb-6">
               Protótipo interno. Ana, Bruno, Camila e Diego são contas de exemplo.
             </footer>
           </ExigeConta>
+          </AvisosProvider>
         </GestaoProvider>
       </body>
     </html>

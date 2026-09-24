@@ -65,7 +65,7 @@ function LinhaConta({ u }: { u: Usuario }) {
         </span>
       </div>
       {confirmando && (
-        <div className="dl-callout dl-callout-danger flex flex-col gap-3">
+        <div className="dl-surgir dl-callout dl-callout-danger flex flex-col gap-3">
           <p className="dl-callout-title">Remover o acesso de {u.nome}?</p>
           <p>
             {u.nome} deixa de entrar no sistema e de receber mensagens.{" "}

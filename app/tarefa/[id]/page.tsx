@@ -9,6 +9,7 @@ import { ROTULO_ESTADO, ROTULO_PRIORIDADE, ROTULO_REGRA, rotuloTransicao, transi
 import { descreverPrazo, formatarDataHora } from "@/lib/datas";
 import { Avatar, Botao, Campo, EtiquetaEstado, EtiquetaIA, EtiquetaPrazo, EtiquetaPrioridade } from "@/components/ui";
 import { Cobrar } from "@/components/Cobrar";
+import { useAvisos } from "@/components/Avisos";
 
 function descreverEvento(e: EventoTarefa): string {
   const estado = (v: string | null) => (v ? ROTULO_ESTADO[v.split(" ")[0] as Estado] ?? v : "");
@@ -110,7 +111,8 @@ function PainelEdicao({ tarefa }: { tarefa: Tarefa }) {
 
 export default function DetalheTarefa() {
   const { id } = useParams<{ id: string }>();
-  const { usuarioAtual, tarefas, usuarios, frentes, eventos, mensagens, mudarEstado, comentar, alternarChecklist, arquivar } = useGestao();
+  const { usuarioAtual, tarefas, usuarios, frentes, eventos, mensagens, mudarEstado, comentar, alternarChecklist, arquivar, desarquivar } = useGestao();
+  const { avisar } = useAvisos();
   const [motivo, setMotivo] = useState("");
   const [pedindoMotivo, setPedindoMotivo] = useState(false);
   const [comentario, setComentario] = useState("");
@@ -224,12 +226,19 @@ export default function DetalheTarefa() {
                   {rotuloTransicao(tarefa.estado, para)}
                 </Botao>
               ))}
-              <Botao variant="ghost" onClick={() => arquivar(tarefa.id)}>
+              <Botao
+                variant="ghost"
+                onClick={() => {
+                  const id = tarefa.id;
+                  arquivar(id);
+                  avisar("Tarefa arquivada.", () => desarquivar(id));
+                }}
+              >
                 Arquivar
               </Botao>
             </div>
             {pedindoMotivo && (
-              <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="dl-surgir flex flex-col gap-2 sm:flex-row">
                 <input className="dl-input" placeholder="O que está travando? (obrigatório)" aria-label="Motivo do bloqueio" value={motivo} onChange={(e) => setMotivo(e.target.value)} autoFocus />
                 <Botao variant="danger" onClick={() => transicionar("bloqueada")}>
                   Confirmar bloqueio

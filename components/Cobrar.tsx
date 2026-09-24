@@ -52,7 +52,7 @@ export function Cobrar({ tarefa, compacto = false }: { tarefa: Tarefa; compacto?
           )}
         </div>
       ) : (
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="dl-surgir flex flex-col gap-2 sm:flex-row">
           <input
             className="dl-input"
             value={recado}
