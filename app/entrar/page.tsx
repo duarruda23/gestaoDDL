@@ -8,7 +8,8 @@ import { FormConta } from "@/components/FormConta";
 import { Avatar, Botao, TituloPagina } from "@/components/ui";
 
 export default function Entrar() {
-  const { usuarios, tarefas, entrar } = useGestao();
+  const { usuarios, tarefas, entrar, usuarioAtualId } = useGestao();
+  const removido = usuarios.find((u) => u.id === usuarioAtualId && !u.ativo);
   const router = useRouter();
   const [criando, setCriando] = useState(false);
 
@@ -25,8 +26,15 @@ export default function Entrar() {
         subtitulo="Aqui todo mundo pede, entrega e cobra todo mundo, o Ítalo incluído. Entre na sua conta para ver o que está com você."
       />
 
+      {removido && (
+        <div className="dl-callout dl-callout-danger mb-5" role="alert">
+          <p className="dl-callout-title">O acesso de {removido.nome} foi removido</p>
+          Fale com o Ítalo se isso foi um engano.
+        </div>
+      )}
+
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {usuarios.map((u) => {
+        {usuarios.filter((u) => u.ativo).map((u) => {
           const minhas = tarefas.filter((t) => t.responsavelId === u.id && estaAtiva(t));
           const vencidas = minhas.filter((t) => estaVencida(t)).length;
           return (

@@ -4,6 +4,7 @@ import type {
   Prioridade,
   RegraCobranca,
   Tarefa,
+  Usuario,
 } from "./types";
 import { diferencaDias, hojeISO } from "./datas";
 
@@ -101,7 +102,25 @@ export function pendenciasParaLiberar(t: Tarefa): string[] {
 // Modelo horizontal (decisão de 24/09): toda conta pode ver, pedir, atribuir,
 // editar, mudar etapa e cobrar qualquer tarefa, de qualquer pessoa — o Ítalo
 // incluído. O que separa as pessoas é o histórico (quem pediu, quem cobrou),
-// não o poder. Por isso não há funções de permissão aqui.
+// não o poder.
+//
+// Exceção única: acesso. Remover (e restaurar) o acesso de alguém é só do
+// dono — o Ítalo — e de quem ele autorizar. Ninguém remove o acesso do dono
+// nem tira a permissão dele, e só o dono dá ou tira essa permissão.
+
+export const DONO_ID = "u-italo";
+
+export function ehDono(u: Usuario | null | undefined): boolean {
+  return u?.id === DONO_ID;
+}
+
+export function podeGerenciarAcessos(u: Usuario | null | undefined): boolean {
+  return Boolean(u && u.ativo && (ehDono(u) || u.gerenciaAcessos));
+}
+
+export function podeDelegarAcessos(u: Usuario | null | undefined): boolean {
+  return ehDono(u) && Boolean(u?.ativo);
+}
 
 // ---- Situação de prazo ----
 

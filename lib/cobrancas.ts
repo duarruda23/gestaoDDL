@@ -54,7 +54,10 @@ function montarMensagem(c: Candidata, usuarios: Usuario[], ignorarJanela: boolea
     tentativas: 0,
     criadoEm: new Date().toISOString(),
   };
-  if (!dest || dest.cobrancaPausada) {
+  if (!dest || !dest.ativo) {
+    return { ...base, status: "ignorado", motivo: "Essa pessoa não tem mais acesso ao sistema" };
+  }
+  if (dest.cobrancaPausada) {
     return { ...base, status: "ignorado", motivo: "Cobrança pausada pra essa pessoa" };
   }
   if (!ignorarJanela && !dentroDaJanela()) {
@@ -111,6 +114,9 @@ export function cobrancaManual(
   if (!t.responsavelId) return { ok: false, motivo: "A tarefa não tem responsável. Defina quem faz antes de cobrar." };
   if (!estaAtiva(t)) return { ok: false, motivo: "A tarefa já foi concluída ou arquivada." };
   if (t.responsavelId === autor.id) return { ok: false, motivo: "A tarefa é sua. Atualize o andamento em vez de se cobrar." };
+  if (!usuarios.find((u) => u.id === t.responsavelId)?.ativo) {
+    return { ok: false, motivo: "Quem faz essa tarefa não tem mais acesso. Passe a tarefa para outra pessoa." };
+  }
   const hoje = hojeISO();
   const chave = `${t.id}|cobranca_manual|${hoje}|${autor.id}>${t.responsavelId}`;
   if (existentes.some((m) => m.chave === chave)) {

@@ -17,6 +17,8 @@ export type Origem = "manual" | "ia";
 
 // Modelo horizontal: não há papéis. Toda conta pode pedir, atribuir, cobrar
 // e ser cobrada — inclusive o Ítalo.
+// Única exceção (decisão de 24/09): remover o acesso de alguém. Só o Ítalo
+// (dono, fixo) e quem ele autorizar (gerenciaAcessos) podem fazer isso.
 export interface Usuario {
   id: string;
   nome: string;
@@ -26,6 +28,10 @@ export interface Usuario {
   cobrancaPausada: boolean;
   criadoEm: string;
   criadoPorId: string | null;
+  ativo: boolean;
+  gerenciaAcessos: boolean;
+  acessoRemovidoEm: string | null;
+  acessoRemovidoPorId: string | null;
 }
 
 export interface Frente {
@@ -78,7 +84,8 @@ export type TipoEvento =
   | "comentario"
   | "checklist"
   | "confirmada_ia"
-  | "cobranca";
+  | "cobranca"
+  | "acesso";
 
 export interface EventoTarefa {
   id: string;

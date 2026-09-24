@@ -17,6 +17,7 @@ function descreverEvento(e: EventoTarefa): string {
     case "confirmada_ia":
     case "checklist":
     case "cobranca":
+    case "acesso":
       return e.depois ?? "";
     case "estado": {
       const [para, ...resto] = (e.depois ?? "").split(" — ");
@@ -66,7 +67,7 @@ function PainelEdicao({ tarefa }: { tarefa: Tarefa }) {
       <Campo id="ed-resp" rotulo="Quem faz">
         <select id="ed-resp" className="dl-input" value={resp} onChange={(e) => setResp(e.target.value)}>
           <option value="">Sem responsável</option>
-          {usuarios.map((u) => (
+          {usuarios.filter((u) => u.ativo || u.id === tarefa.responsavelId).map((u) => (
             <option key={u.id} value={u.id}>
               {u.nome}
             </option>

@@ -62,7 +62,7 @@ export default function Pedir() {
         body: JSON.stringify({
           texto,
           autorId: usuarioAtual!.id,
-          equipe: usuarios.map(({ id, nome, funcao, frenteIds }) => ({ id, nome, funcao, frenteIds })),
+          equipe: usuarios.filter((u) => u.ativo).map(({ id, nome, funcao, frenteIds }) => ({ id, nome, funcao, frenteIds })),
         }),
       });
       const dados = await resp.json();

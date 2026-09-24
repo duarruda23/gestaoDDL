@@ -39,7 +39,7 @@ function LinhaTriagem({ tarefa }: { tarefa: Tarefa }) {
       <div className="grid gap-2 sm:grid-cols-3">
         <select id={`${idBase}-resp`} aria-label="Quem faz" className="dl-input" style={!tarefa.responsavelId ? { borderColor: "var(--warning)" } : undefined} value={tarefa.responsavelId ?? ""} onChange={(e) => editar("responsavelId", e.target.value)}>
           <option value="">Quem faz?</option>
-          {usuarios.map((u) => (
+          {usuarios.filter((u) => u.ativo).map((u) => (
             <option key={u.id} value={u.id}>
               {u.nome}
             </option>

@@ -74,7 +74,7 @@ export function EditorProposta({
         >
           <select id={id("resp")} className="dl-input" value={proposta.responsavelId ?? ""} onChange={(e) => set("responsavelId", e.target.value || null)}>
             <option value="">Escolher depois</option>
-            {usuarios.map((u) => (
+            {usuarios.filter((u) => u.ativo).map((u) => (
               <option key={u.id} value={u.id}>
                 {u.id === usuarioAtual?.id ? `${u.nome} (você)` : u.nome} · {u.funcao}
               </option>

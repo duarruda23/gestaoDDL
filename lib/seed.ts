@@ -6,6 +6,7 @@ import type {
   Usuario,
 } from "./types";
 import { hojeISO, somarDias } from "./datas";
+import { DONO_ID } from "./regras";
 
 // Dados de demonstração. Ítalo, Eduardo, Scarlett, Larissa e Vitória são da
 // operação real; Ana, Bruno, Camila e Diego são exemplos até a equipe real
@@ -21,7 +22,14 @@ function conta(
   frenteIds: string[],
   cobrancaPausada = false
 ): Usuario {
-  return { id, nome, funcao, telefone, frenteIds, cobrancaPausada, criadoEm: CRIACAO, criadoPorId: "u-eduardo" };
+  return {
+    id, nome, funcao, telefone, frenteIds, cobrancaPausada,
+    criadoEm: CRIACAO, criadoPorId: "u-eduardo",
+    ativo: true,
+    gerenciaAcessos: id === DONO_ID,
+    acessoRemovidoEm: null,
+    acessoRemovidoPorId: null,
+  };
 }
 
 export const USUARIOS: Usuario[] = [

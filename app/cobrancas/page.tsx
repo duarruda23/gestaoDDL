@@ -160,7 +160,7 @@ export default function Cobrancas() {
           <div className="dl-panel">
             <p className="dl-eyebrow mb-3">Receber no WhatsApp</p>
             <ul className="flex flex-col gap-2">
-              {usuarios.map((u) => (
+              {usuarios.filter((u) => u.ativo).map((u) => (
                 <li key={u.id} className="flex items-center justify-between text-sm">
                   <span className="font-semibold">{u.nome}</span>
                   {u.id === eu ? (

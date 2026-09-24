@@ -28,6 +28,10 @@ function lerEquipe(bruto: unknown): Usuario[] {
       cobrancaPausada: false,
       criadoEm: "",
       criadoPorId: null,
+      ativo: true,
+      gerenciaAcessos: false,
+      acessoRemovidoEm: null,
+      acessoRemovidoPorId: null,
     }));
   return equipe.length ? equipe : USUARIOS;
 }

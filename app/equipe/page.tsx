@@ -5,6 +5,7 @@ import { useGestao } from "@/lib/store";
 import { estaAtiva } from "@/lib/regras";
 import { formatarDataHora } from "@/lib/datas";
 import { FormConta } from "@/components/FormConta";
+import { Acessos } from "@/components/Acessos";
 import { Avatar, Botao, TituloPagina, TituloSecao } from "@/components/ui";
 
 export default function Equipe() {
@@ -20,7 +21,7 @@ export default function Equipe() {
       <TituloPagina
         chapeu="Equipe"
         titulo="Contas da equipe"
-        subtitulo="Todo mundo tem a mesma conta: pede, faz, cobra e é cobrado. Não há chefe no sistema; o histórico mostra quem pediu e quem cobrou."
+        subtitulo="Todo mundo tem a mesma conta: pede, faz, cobra e é cobrado. A única exceção é remover acessos, que fica com o Ítalo e quem ele autorizar."
       />
 
       <section className="dl-panel !p-0 overflow-x-auto">
@@ -36,7 +37,7 @@ export default function Equipe() {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {usuarios.map((u) => (
+            {usuarios.filter((u) => u.ativo).map((u) => (
               <tr key={u.id}>
                 <td className="p-3">
                   <span className="flex items-center gap-2 font-bold">
@@ -60,6 +61,8 @@ export default function Equipe() {
           </tbody>
         </table>
       </section>
+
+      <Acessos />
 
       <section className="dl-panel !p-5 sm:!p-6 max-w-3xl">
         <p className="dl-eyebrow">Nova conta</p>

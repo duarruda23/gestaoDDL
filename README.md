@@ -34,7 +34,7 @@ Localmente, coloque em `.env.local` (nunca commitar). Na Vercel, em Settings →
 
 ## O que o protótipo cobre
 
-Visual do [design system Gestão Donas de Loja](https://claude.ai/artifact/2r2WXo6FMN1oJr4KiJJZZE) (identidade do site do Ítalo). **Modelo horizontal:** não há papéis; todo mundo pede, faz, cobra e é cobrado, inclusive o Ítalo.
+Visual do [design system Gestão Donas de Loja](https://claude.ai/artifact/2r2WXo6FMN1oJr4KiJJZZE) (identidade do site do Ítalo). **Modelo horizontal:** não há papéis; todo mundo pede, faz, cobra e é cobrado, inclusive o Ítalo. Única exceção: remover o acesso de alguém é só do Ítalo (dono) e de quem ele autorizar.
 
 | Tela | Rota | O que demonstra |
 |---|---|---|
@@ -46,7 +46,7 @@ Visual do [design system Gestão Donas de Loja](https://claude.ai/artifact/2r2WX
 | Detalhe | `/tarefa/[id]` | Quem pediu, botão Cobrar, etapas, bloqueio com motivo, checklist, comentários, histórico, conflito de edição |
 | Painel | `/painel` | Igual para todos: vencidas, sem dono, bloqueadas, e pessoa por pessoa (quem cobrou, quem foi cobrado) |
 | Cobranças | `/cobrancas` | Fila de WhatsApp: automáticas + cobranças de colegas, idempotência, falha e nova tentativa |
-| Equipe | `/equipe` | Contas, criar conta para alguém, restaurar dados de demonstração |
+| Equipe | `/equipe` | Contas, criar conta para alguém, **acessos** (remover/restaurar: só o Ítalo e quem ele autorizar), restaurar dados de demonstração |
 
 Botão "Claro/Escuro" no topo troca o tema (escuro é o padrão, como o site).
 

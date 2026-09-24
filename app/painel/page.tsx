@@ -27,6 +27,7 @@ export default function Painel() {
   const manuais = mensagens.filter((m) => m.regra === "cobranca_manual" && m.autorId);
 
   const porPessoa = usuarios
+    .filter((u) => u.ativo)
     .map((u) => {
       const faz = ativas.filter((t) => t.responsavelId === u.id);
       const pediu = ativas.filter((t) => t.criadorId === u.id && t.responsavelId !== u.id);

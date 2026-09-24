@@ -36,7 +36,7 @@ import {
   type ResultadoCobrancaManual,
   type ResultadoRodada,
 } from "./cobrancas";
-import { pendenciasParaLiberar } from "./regras";
+import { DONO_ID, ehDono, estaAtiva, pendenciasParaLiberar, podeDelegarAcessos, podeGerenciarAcessos } from "./regras";
 
 // Store em memória + localStorage — suficiente pro protótipo navegável.
 // No sistema real, cada ação aqui vira uma rota do servidor com sessão
@@ -115,7 +115,28 @@ interface ContextoGestao extends EstadoApp {
   rodarCobrancasAgora: (ignorarJanela: boolean) => ResultadoRodada;
   reenviarMensagem: (id: string) => void;
   alternarPausa: (usuarioId: string) => void;
+  removerAcesso: (usuarioId: string, motivo: string) => ResultadoEdicao;
+  restaurarAcesso: (usuarioId: string) => ResultadoEdicao;
+  definirGerenciaAcessos: (usuarioId: string, pode: boolean) => ResultadoEdicao;
   resetar: () => void;
+}
+
+// Dados salvos antes da função de acessos (24/09) não têm os campos novos:
+// completa sem apagar nada do que a pessoa já fez no navegador.
+function normalizarUsuario(u: Partial<Usuario> & Pick<Usuario, "id" | "nome">): Usuario {
+  return {
+    funcao: "",
+    telefone: "",
+    frenteIds: [],
+    cobrancaPausada: false,
+    criadoEm: "",
+    criadoPorId: null,
+    ...u,
+    ativo: u.ativo ?? true,
+    gerenciaAcessos: u.gerenciaAcessos ?? u.id === DONO_ID,
+    acessoRemovidoEm: u.acessoRemovidoEm ?? null,
+    acessoRemovidoPorId: u.acessoRemovidoPorId ?? null,
+  };
 }
 
 const Ctx = createContext<ContextoGestao | null>(null);
@@ -135,7 +156,7 @@ export function GestaoProvider({ children }: { children: React.ReactNode }) {
         const salvo = JSON.parse(raw) as EstadoApp;
         // Hidratação do localStorage só pode acontecer depois de montar (evita divergência com o HTML do servidor).
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        if (salvo.tarefas && salvo.usuarios) setEstado(salvo);
+        if (salvo.tarefas && salvo.usuarios) setEstado({ ...salvo, usuarios: salvo.usuarios.map(normalizarUsuario) });
       }
     } catch {
       // localStorage indisponível: segue com os dados de demonstração
@@ -152,7 +173,8 @@ export function GestaoProvider({ children }: { children: React.ReactNode }) {
     }
   }, [estado, carregado]);
 
-  const usuarioAtual = estado.usuarios.find((u) => u.id === estado.usuarioAtualId) ?? null;
+  // Conta sem acesso não entra: é tratada como se não houvesse sessão.
+  const usuarioAtual = estado.usuarios.find((u) => u.id === estado.usuarioAtualId && u.ativo) ?? null;
   // Ações sempre registram quem fez. Sem sessão (não deveria acontecer: as
   // telas exigem entrar), o registro fica como "sem conta".
   const atorAtual = () => estadoRef.current.usuarioAtualId ?? "sem-conta";
@@ -204,6 +226,10 @@ export function GestaoProvider({ children }: { children: React.ReactNode }) {
       cobrancaPausada: false,
       criadoEm: agoraISO(),
       criadoPorId: s.usuarioAtualId,
+      ativo: true,
+      gerenciaAcessos: false,
+      acessoRemovidoEm: null,
+      acessoRemovidoPorId: null,
     };
     setEstado((atual) => ({ ...atual, usuarios: [...atual.usuarios, usuario] }));
     return { ok: true, usuario };
@@ -506,6 +532,76 @@ export function GestaoProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  // ---- Acessos: só o dono (Ítalo) e quem ele autorizar ----
+
+  const removerAcesso: ContextoGestao["removerAcesso"] = useCallback(
+    (usuarioId, motivo) => {
+      const s = estadoRef.current;
+      const quem = s.usuarios.find((u) => u.id === s.usuarioAtualId);
+      const alvo = s.usuarios.find((u) => u.id === usuarioId);
+      if (!podeGerenciarAcessos(quem)) return { ok: false, motivo: "Só o Ítalo e quem ele autorizar podem remover acessos." };
+      if (!alvo || !alvo.ativo) return { ok: false, motivo: "Essa conta já está sem acesso." };
+      if (ehDono(alvo)) return { ok: false, motivo: "O acesso do Ítalo não pode ser removido." };
+      if (alvo.id === quem!.id) return { ok: false, motivo: "Você não pode remover o seu próprio acesso." };
+      if (alvo.gerenciaAcessos && !ehDono(quem)) {
+        return { ok: false, motivo: "Só o Ítalo remove o acesso de quem também gerencia acessos." };
+      }
+      const agora = agoraISO();
+      const detalhe = `Acesso de ${alvo.nome} removido por ${quem!.nome}${motivo.trim() ? `: ${motivo.trim()}` : ""}`;
+      // Tarefas abertas da pessoa voltam para a triagem, sem dono, para alguém reassumir.
+      const afetadas = s.tarefas.filter((t) => t.responsavelId === alvo.id && estaAtiva(t));
+      setEstado((atual) => ({
+        ...atual,
+        usuarios: atual.usuarios.map((u) =>
+          u.id === alvo.id
+            ? { ...u, ativo: false, gerenciaAcessos: false, acessoRemovidoEm: agora, acessoRemovidoPorId: quem!.id }
+            : u
+        ),
+        tarefas: atual.tarefas.map((t) =>
+          afetadas.some((a) => a.id === t.id)
+            ? { ...t, responsavelId: null, estado: "triagem", estadoAnterior: null, motivoBloqueio: null, versao: t.versao + 1, atualizadoEm: agora }
+            : t
+        ),
+        mensagens: atual.mensagens.map((m) =>
+          m.destinatarioId === alvo.id && m.status === "pendente"
+            ? { ...m, status: "ignorado", motivo: "Essa pessoa não tem mais acesso ao sistema" }
+            : m
+        ),
+        eventos: [
+          ...afetadas.map((t) => evento(t.id, "acesso", alvo.nome, `${detalhe}. A tarefa voltou para a triagem.`)),
+          ...atual.eventos,
+        ],
+      }));
+      return { ok: true };
+    },
+    [evento]
+  );
+
+  const restaurarAcesso: ContextoGestao["restaurarAcesso"] = useCallback((usuarioId) => {
+    const s = estadoRef.current;
+    const quem = s.usuarios.find((u) => u.id === s.usuarioAtualId);
+    if (!podeGerenciarAcessos(quem)) return { ok: false, motivo: "Só o Ítalo e quem ele autorizar podem restaurar acessos." };
+    setEstado((atual) => ({
+      ...atual,
+      usuarios: atual.usuarios.map((u) =>
+        u.id === usuarioId ? { ...u, ativo: true, acessoRemovidoEm: null, acessoRemovidoPorId: null } : u
+      ),
+    }));
+    return { ok: true };
+  }, []);
+
+  const definirGerenciaAcessos: ContextoGestao["definirGerenciaAcessos"] = useCallback((usuarioId, pode) => {
+    const s = estadoRef.current;
+    const quem = s.usuarios.find((u) => u.id === s.usuarioAtualId);
+    if (!podeDelegarAcessos(quem)) return { ok: false, motivo: "Só o Ítalo decide quem mais pode gerenciar acessos." };
+    if (usuarioId === DONO_ID) return { ok: false, motivo: "O Ítalo sempre gerencia acessos." };
+    setEstado((atual) => ({
+      ...atual,
+      usuarios: atual.usuarios.map((u) => (u.id === usuarioId && u.ativo ? { ...u, gerenciaAcessos: pode } : u)),
+    }));
+    return { ok: true };
+  }, []);
+
   const resetar = useCallback(() => {
     const novo = estadoInicial();
     setEstado((s) => ({ ...novo, usuarioAtualId: s.usuarioAtualId }));
@@ -533,13 +629,16 @@ export function GestaoProvider({ children }: { children: React.ReactNode }) {
       rodarCobrancasAgora,
       reenviarMensagem,
       alternarPausa,
+      removerAcesso,
+      restaurarAcesso,
+      definirGerenciaAcessos,
       resetar,
     }),
     [
       estado, carregado, usuarioAtual, entrar, sair, criarConta, cobrar, registrarPedido, descartarProposta,
       confirmarProposta, criarManual, editarTarefa, mudarEstado, arquivar, comentar,
       alternarChecklist, simularEdicaoExterna, rodarCobrancasAgora, reenviarMensagem,
-      alternarPausa, resetar,
+      alternarPausa, removerAcesso, restaurarAcesso, definirGerenciaAcessos, resetar,
     ]
   );
 
