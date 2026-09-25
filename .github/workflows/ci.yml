@@ -55,3 +55,17 @@ jobs:
         run: pnpm db:migrate
       - name: Testar regras do banco
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/teste-regras.sql
+      - name: Operação do dono (rodar duas vezes não duplica)
+        env:
+          MIGRACAO_DATABASE_URL: ${{ env.DATABASE_URL }}
+          SITE_URL: https://exemplo.test
+          DONO_NOME: Ítalo
+          DONO_EMAIL: italo@exemplo.test
+          DONO_WHATSAPP: "+55 82 90000-0001"
+        run: |
+          node db/operacao-dono.mjs | grep -q "/convite/"
+          node db/operacao-dono.mjs | grep -q "Dono já existia"
+          test "$(psql "$DATABASE_URL" -tAc 'select count(*) from usuarios where dono')" = "1"
+          test "$(psql "$DATABASE_URL" -tAc 'select count(*) from frentes')" = "7"
+          test "$(psql "$DATABASE_URL" -tAc 'select count(*) from convites')" = "2"
+          echo "ok: um dono, 7 frentes, 2 convites"

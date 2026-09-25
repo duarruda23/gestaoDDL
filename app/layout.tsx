@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
 import "./globals.css";
-import { GestaoProvider } from "@/lib/store";
 import { Nav } from "@/components/Nav";
-import { ExigeConta } from "@/components/ExigeConta";
 import { AvisosProvider } from "@/components/Avisos";
+import { obterConta } from "@/lib/servidor/dal";
+import { sair } from "./entrar/acoes";
 
 const montserrat = Montserrat({
   variable: "--font-montserrat",
@@ -15,31 +15,27 @@ const montserrat = Montserrat({
 
 export const metadata: Metadata = {
   title: "Gestão Donas de Loja",
-  description: "Pedidos, prazos e cobranças da equipe Donas de Loja (protótipo interno)",
+  description: "Pedidos, prazos e cobranças da equipe Donas de Loja",
   robots: { index: false, follow: false },
 };
 
 // Script mínimo que aplica o tema salvo antes da pintura (evita piscar claro/escuro).
 const TEMA_INICIAL = `try{var t=localStorage.getItem("gestao-donas:tema");if(t==="light")document.documentElement.dataset.theme="light"}catch(e){}`;
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // A conta vem da sessão no servidor (DAL). Sem sessão, só a tela de entrar aparece.
+  const conta = await obterConta();
+
   return (
     <html lang="pt-BR" className={`${montserrat.variable} h-full`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: TEMA_INICIAL }} />
       </head>
       <body className="min-h-full flex flex-col">
-        <GestaoProvider>
-          <AvisosProvider>
-          <ExigeConta>
-            <Nav />
-            <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-28 md:pb-16">{children}</main>
-            <footer className="text-center text-xs text-ink-subtle py-6 px-4 pb-28 md:pb-6">
-              Protótipo interno. Ana, Bruno, Camila e Diego são contas de exemplo.
-            </footer>
-          </ExigeConta>
-          </AvisosProvider>
-        </GestaoProvider>
+        <AvisosProvider>
+          <Nav conta={conta ? { nome: conta.nome } : null} sair={sair} />
+          <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-28 md:pb-16">{children}</main>
+        </AvisosProvider>
       </body>
     </html>
   );

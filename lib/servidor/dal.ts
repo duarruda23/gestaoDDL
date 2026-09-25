@@ -13,6 +13,7 @@ import { validarSessao, type ContaDaSessao } from "./sessao-nucleo";
 
 export const obterConta = cache(async (): Promise<ContaDaSessao | null> => {
   const token = (await cookies()).get(COOKIE_SESSAO)?.value;
+  if (!token) return null; // sem cookie, nem abre conexão com o banco
   return validarSessao(obterBanco(), token);
 });
 

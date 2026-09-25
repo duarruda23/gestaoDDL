@@ -2,6 +2,7 @@ import { FRENTES, USUARIOS } from "@/lib/seed";
 import { hojeISO } from "@/lib/datas";
 import { VERSAO_PROMPT, montarSystemPrompt, validarPropostas } from "@/lib/interpretacao";
 import { escolherProvedor } from "@/lib/provedor-ia";
+import { obterConta } from "@/lib/servidor/dal";
 import { interpretarSimulado } from "@/lib/interpretar-simulado";
 import type { ResultadoInterpretacao, Usuario } from "@/lib/types";
 
@@ -37,6 +38,10 @@ function lerEquipe(bruto: unknown): Usuario[] {
 }
 
 export async function POST(request: Request) {
+  // Só quem tem sessão usa a IA (custo por chamada). O bloco B troca a equipe
+  // e o autor vindos do navegador pelos dados do banco.
+  if (!(await obterConta())) return Response.json({ erro: "Entre na sua conta." }, { status: 401 });
+
   let texto = "";
   let autor: Usuario | null = null;
   let equipe: Usuario[] = USUARIOS;
