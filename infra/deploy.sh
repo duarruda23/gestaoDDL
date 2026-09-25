@@ -24,14 +24,15 @@ docker stack deploy --detach=false -c infra/stack.yml gestao-donas
 echo "== Esperando o Postgres ficar saudável"
 i=0
 until docker run --rm --network gestao-donas_interna postgres:17 \
-  pg_isready -h postgres -U "$PG_ADMIN_USER" -d gestao_donas >/dev/null 2>&1; do
+  pg_isready -h postgres. -U "$PG_ADMIN_USER" -d gestao_donas >/dev/null 2>&1; do
   i=$((i + 1)); [ "$i" -gt 30 ] && { echo "Postgres não respondeu"; exit 1; }
   sleep 2
 done
 
 echo "== Aplicando migrações"
+# "postgres." com ponto final: ver comentário no topo do infra/stack.yml
 docker run --rm --network gestao-donas_interna \
-  -e MIGRACAO_DATABASE_URL="postgres://$PG_ADMIN_USER:$PG_ADMIN_PASSWORD@postgres:5432/gestao_donas" \
+  -e MIGRACAO_DATABASE_URL="postgres://$PG_ADMIN_USER:$PG_ADMIN_PASSWORD@postgres.:5432/gestao_donas" \
   "gestao-donas-app:$VERSAO" node db/migrar.mjs
 
 echo "== Pronto: gestao-donas-app:$VERSAO em https://$DOMINIO"

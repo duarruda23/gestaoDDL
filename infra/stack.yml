@@ -4,6 +4,11 @@
 #
 # O Postgres NÃO publica porta: só app, backup e a migração falam com ele,
 # pela rede overlay "gestao-donas_interna".
+#
+# IMPORTANTE: o host do banco é "postgres." (com ponto final). A VPS tem
+# "search localhost" no resolv.conf; o DNS do Docker não responde IPv6 para
+# o serviço, então "postgres" (sem ponto) vira "postgres.localhost" = ::1 e a
+# conexão cai na própria máquina. O ponto final impede o sufixo. (25/09/2026)
 
 version: "3.8"
 
@@ -34,7 +39,7 @@ services:
   app:
     image: gestao-donas-app:${VERSAO}
     environment:
-      DATABASE_URL: postgres://${PG_APP_USER}:${PG_APP_PASSWORD}@postgres:5432/gestao_donas
+      DATABASE_URL: postgres://${PG_APP_USER}:${PG_APP_PASSWORD}@postgres.:5432/gestao_donas
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
@@ -62,7 +67,7 @@ services:
   backup:
     image: postgres:17
     environment:
-      PGHOST: postgres
+      PGHOST: postgres.
       PGDATABASE: gestao_donas
       PGUSER: ${PG_ADMIN_USER}
       PGPASSWORD: ${PG_ADMIN_PASSWORD}
