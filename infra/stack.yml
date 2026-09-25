@@ -40,6 +40,7 @@ services:
     image: gestao-donas-app:${VERSAO}
     environment:
       DATABASE_URL: postgres://${PG_APP_USER}:${PG_APP_PASSWORD}@postgres.:5432/gestao_donas
+      SITE_URL: https://${DOMINIO} # links de convite
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}

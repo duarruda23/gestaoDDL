@@ -15,7 +15,7 @@ export const ROTAS: Rota[] = [
   { href: "/triagem", rotulo: "Triagem", pronta: false }, // A6
   { href: "/painel", rotulo: "Painel", pronta: false }, // A6
   { href: "/cobrancas", rotulo: "Cobranças", pronta: false }, // A8
-  { href: "/equipe", rotulo: "Equipe", pronta: false }, // A4/A5
+  { href: "/equipe", rotulo: "Equipe", pronta: true }, // A4/A5 (25/09)
 ];
 
 export function rotaPronta(href: string): boolean {
