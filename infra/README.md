@@ -66,3 +66,20 @@ internet ─HTTPS─> Traefik ─overlay "trafegodeloja"─> app (Next.js :3000)
 - Subdomínio e registro DNS.
 - Destino do backup externo.
 - A primeira execução do `deploy.sh` vai validar o Dockerfile (ainda não foi construído).
+
+## Integração com o n8n (WhatsApp)
+
+O n8n não acessa o banco: usa três rotas, todas `POST` com o cabeçalho
+`Authorization: Bearer <N8N_TOKEN>` (o mesmo valor do `infra/.env`). Sem
+`N8N_TOKEN` configurado, as rotas respondem 503.
+
+| Rota | Quando chamar | Corpo | Resposta |
+|---|---|---|---|
+| `/api/n8n/gerar` | de hora em hora, das 8h às 18h | — | `{ novas, ignoradas, jaExistiam }` — cria lembretes de véspera, cobranças de vencidas e avisos a quem pediu; repetir no mesmo dia não duplica |
+| `/api/n8n/reservar` | a cada 1–2 min | `{ "limite": 20 }` (opcional) | `{ mensagens: [{ id, telefone, nome, texto }], motivo? }` — já reservadas por 5 min; fora da janela (8h–19h) volta vazio |
+| `/api/n8n/resultado` | depois de cada envio | `{ id, ok, idProvedor?, erro? }` ou `{ resultados: [...] }` | falha volta pra fila (5 e 10 min depois) e na 3ª vira "Falhou" |
+
+`telefone` já vem só com dígitos e DDI (ex.: `5581999990000`), pronto pro
+campo `number` da Evolution API. O `texto` usa `*negrito*` do WhatsApp.
+Se o n8n cair no meio, a reserva vence em 5 min e a mensagem volta a ser
+entregue — por isso o envio precisa responder o `resultado` sempre.

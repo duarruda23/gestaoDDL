@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 import type { Banco } from "@/db";
-import { eventosTarefa, frentes, tarefas, usuarios } from "@/db/schema";
+import { eventosTarefa, frentes, mensagens, tarefas, usuarios } from "@/db/schema";
 import {
   CONFLITO,
   adicionarItem,
@@ -188,5 +188,35 @@ describe("comentários e checklist", () => {
       "Marcou: Cotar",
       "Removeu: Reservar",
     ]);
+  });
+});
+
+describe("aviso de atribuição no WhatsApp", () => {
+  const fila = () => banco.select().from(mensagens).orderBy(mensagens.criadoEm);
+
+  it("sai ao criar completa, ao liberar da triagem e ao passar pra outra pessoa; nunca pra quem se atribuiu", async () => {
+    await criarTarefa(banco, italo, completa());
+    let m = await fila();
+    expect(m).toHaveLength(1);
+    expect(m[0]).toMatchObject({ regra: "atribuicao", destinatarioId: ana.id, autorId: italo.id, status: "pendente" });
+    expect(m[0].texto).toMatch(/^Oi, Ana! Ítalo te pediu: \*Fechar hotel de Maceió\*\. Prazo: /);
+
+    // A Ana anota pra ela mesma: sem aviso.
+    await criarTarefa(banco, ana, completa());
+    expect(await fila()).toHaveLength(1);
+
+    // Na triagem não avisa; ao liberar, avisa.
+    const t = (await criarTarefa(banco, ana, { ...completa(), responsavelId: italo.id, prazo: null })) as { id: string };
+    expect(await fila()).toHaveLength(1);
+    await editarTarefa(banco, ana, t.id, 1, { prazo: "2026-10-09" });
+    await mudarEtapa(banco, ana, t.id, 2, "a_fazer");
+    m = await fila();
+    expect(m).toHaveLength(2);
+    expect(m[1]).toMatchObject({ destinatarioId: italo.id });
+
+    // O Ítalo passa pra Ana uma tarefa que a Ana pediu.
+    await editarTarefa(banco, italo, t.id, 3, { responsavelId: ana.id });
+    m = await fila();
+    expect(m[2].texto).toContain("Ítalo te passou: *Fechar hotel de Maceió* (pedido de Ana)");
   });
 });

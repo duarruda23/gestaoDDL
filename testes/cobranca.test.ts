@@ -32,6 +32,8 @@ beforeEach(async () => {
   const base = { descricao: "", frenteId: f.id, prioridade: "media" as const };
   tarefaDaAna = ((await criarTarefa(banco, italo, { ...base, titulo: "Vídeos", responsavelId: ana.id, prazo: "2026-09-23" })) as { id: string }).id;
   tarefaDoItalo = ((await criarTarefa(banco, ana, { ...base, titulo: "Aprovar roteiro", responsavelId: italo.id, prazo: "2026-09-26" })) as { id: string }).id;
+  // Criar já gera o aviso de atribuição; aqui só interessam as cobranças.
+  await banco.delete(mensagens);
 });
 
 describe("cobrar", () => {

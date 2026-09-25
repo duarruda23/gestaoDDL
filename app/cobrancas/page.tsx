@@ -6,6 +6,7 @@ import { ROTULO_REGRA } from "@/lib/regras";
 import { formatarDataHora } from "@/lib/datas";
 import type { RegraCobranca } from "@/lib/types";
 import { PausarCobrancas } from "@/components/PausarCobrancas";
+import { Reenviar } from "@/components/Reenviar";
 import { EtiquetaEstado, TituloPagina, Vazio } from "@/components/ui";
 
 export const metadata = { title: "Cobranças · Gestão Donas de Loja" };
@@ -46,11 +47,15 @@ function Balao({ m }: { m: MensagemVisao }) {
       </div>
       <div className="dl-msg-bubble max-w-md">{negritoWhats(m.texto)}</div>
       {m.motivo && <p className="dl-msg-note">{m.motivo}</p>}
-      {m.tarefa && (
-        <Link href={`/tarefa/${m.tarefa.id}`} className="dl-link mt-2 inline-block text-xs">
-          Ver tarefa
-        </Link>
-      )}
+      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-subtle">
+        {m.tarefa && (
+          <Link href={`/tarefa/${m.tarefa.id}`} className="dl-link">
+            Ver tarefa
+          </Link>
+        )}
+        {m.tentativas > 0 && <span>Tentativas: {m.tentativas}</span>}
+        {status === "falhou" && <Reenviar id={m.id} />}
+      </div>
     </div>
   );
 }
@@ -120,10 +125,11 @@ export default async function Cobrancas({ searchParams }: PageProps<"/cobrancas"
           <div className="dl-panel text-sm">
             <p className="dl-eyebrow mb-2">Como funciona</p>
             <ul className="flex list-disc flex-col gap-1.5 pl-4 text-ink-muted">
-              <li>Qualquer pessoa cobra qualquer tarefa de outra, pelo botão “Cobrar” na tarefa.</li>
-              <li>Uma cobrança por tarefa, por pessoa, por dia.</li>
-              <li>Quem pausou ou não cadastrou WhatsApp não recebe; a cobrança fica registrada na tarefa.</li>
-              <li>O envio pelo WhatsApp está sendo ligado; por enquanto as mensagens ficam “Na fila”.</li>
+              <li>Qualquer pessoa cobra qualquer tarefa de outra, pelo botão “Cobrar” na tarefa. Uma por tarefa, por pessoa, por dia.</li>
+              <li>Automáticas: aviso quando alguém recebe uma tarefa, lembrete na véspera do prazo, cobrança diária enquanto estiver vencida e, depois de alguns dias, aviso a quem pediu.</li>
+              <li>Mensagens só saem em horário comercial; fora dele esperam na fila.</li>
+              <li>Quem pausou ou não cadastrou WhatsApp não recebe; fica registrado na tarefa.</li>
+              <li>Se o envio falhar, o sistema tenta mais duas vezes; depois aparece aqui como “Falhou”.</li>
             </ul>
           </div>
         </aside>

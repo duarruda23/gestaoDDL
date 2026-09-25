@@ -1,9 +1,10 @@
-import { and, desc, eq, gte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Banco } from "@/db";
-import { configCobranca, eventosTarefa, mensagens, tarefas, usuarios } from "@/db/schema";
+import { eventosTarefa, mensagens, tarefas, usuarios } from "@/db/schema";
 import { estaAtiva } from "@/lib/regras";
-import { FUSO, descreverPrazo, diferencaDias, hojeISO, somarDias } from "@/lib/datas";
+import { descreverPrazo, diferencaDias, hojeISO, somarDias } from "@/lib/datas";
+import { enfileirar, lerConfig, mensagensDoDia, primeiroNome } from "./fila";
 
 // Cobrança manual (início do bloco C). Modelo horizontal: qualquer pessoa
 // cobra qualquer tarefa de outra — o Ítalo cobra a equipe e a equipe cobra o
@@ -16,8 +17,6 @@ type Autor = { id: string; nome: string };
 
 const FORMATO_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const LIMITE_RECADO = 300;
-
-const primeiroNome = (nome: string) => nome.split(" ")[0];
 
 export async function cobrarTarefa(
   banco: Banco,
@@ -40,20 +39,11 @@ export async function cobrarTarefa(
     const [dest] = await tx.select().from(usuarios).where(eq(usuarios.id, t.responsavelId)).limit(1);
     if (!dest?.ativo) return { ok: false, motivo: "Quem faz essa tarefa não tem mais acesso. Passe a tarefa para outra pessoa." };
 
-    // Limite diário por pessoa (config_cobranca): protege quem recebe de
-    // uma enxurrada, somando automáticas e manuais do dia.
-    const [config] = await tx.select({ limite: configCobranca.limiteDiarioPorPessoa }).from(configCobranca).limit(1);
-    const [{ n }] = await tx
-      .select({ n: sql<number>`count(*)::int` })
-      .from(mensagens)
-      .where(
-        and(
-          eq(mensagens.destinatarioId, dest.id),
-          ne(mensagens.status, "ignorado"),
-          sql`(${mensagens.criadoEm} AT TIME ZONE ${FUSO})::date = ${hoje}::date`
-        )
-      );
-    if (config && n >= config.limite)
+    // Limite diário de quem recebe (config_cobranca): na cobrança manual, em
+    // vez de registrar como ignorada, avisa quem está cobrando.
+    const config = await lerConfig(tx);
+    const n = await mensagensDoDia(tx, dest.id, hoje);
+    if (config && n >= config.limiteDiarioPorPessoa)
       return { ok: false, motivo: `${primeiroNome(dest.nome)} já recebeu ${n} mensagens hoje, o limite do dia. Tente amanhã ou fale direto.` };
 
     let situacao = `Prazo: ${descreverPrazo(t.prazo, hoje).toLowerCase()}.`;
@@ -63,29 +53,20 @@ export async function cobrarTarefa(
     }
     const texto = `${primeiroNome(dest.nome)}, ${primeiroNome(autor.nome)} está cobrando: *${t.titulo}*. ${situacao}${recadoLimpo ? ` ${recadoLimpo}` : ""}`;
 
-    // Sem WhatsApp ou com cobrança pausada: fica registrada, mas não sai.
-    const motivoIgnorar = dest.cobrancaPausada
-      ? `${primeiroNome(dest.nome)} pausou as cobranças no WhatsApp.`
-      : !dest.telefoneWhatsapp.trim()
-        ? `${primeiroNome(dest.nome)} ainda não cadastrou o WhatsApp.`
-        : null;
-    const status = motivoIgnorar ? "ignorado" : "pendente";
-
-    const inseridas = await tx
-      .insert(mensagens)
-      .values({
+    // Pausada ou sem WhatsApp: a fila registra como ignorada, com o motivo.
+    const { inserida, status } = await enfileirar(
+      tx,
+      {
         chave: `${t.id}|cobranca_manual|${hoje}|${autor.id}>${dest.id}`,
         tarefaId: t.id,
         regra: "cobranca_manual",
         autorId: autor.id,
         destinatarioId: dest.id,
         texto,
-        status,
-        motivo: motivoIgnorar,
-      })
-      .onConflictDoNothing()
-      .returning({ id: mensagens.id });
-    if (!inseridas.length) return { ok: false, motivo: "Você já cobrou essa tarefa hoje. A pessoa já foi avisada." };
+      },
+      hoje
+    );
+    if (!inserida || !status) return { ok: false, motivo: "Você já cobrou essa tarefa hoje. A pessoa já foi avisada." };
 
     await tx.insert(eventosTarefa).values({
       tarefaId: t.id,

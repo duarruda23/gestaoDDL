@@ -4,6 +4,8 @@ import { checklistItens, comentarios, eventosTarefa, frentes, tarefas, usuarios 
 import type { Estado, Prioridade } from "@/lib/types";
 import { pendenciasParaLiberar, transicoesPermitidas } from "@/lib/regras";
 import { CONFLITO } from "@/lib/conflito";
+import { descreverPrazo, hojeISO } from "@/lib/datas";
+import { enfileirar, primeiroNome } from "./fila";
 
 // A7 — escrita de tarefas no servidor. Modelo horizontal: qualquer conta
 // ativa pode pedir, editar, mudar etapa, comentar e mexer no checklist de
@@ -80,6 +82,37 @@ async function nomeDe(tx: Tx, id: string | null): Promise<string | null> {
   return p?.nome ?? null;
 }
 
+// Aviso de atribuição no WhatsApp (bloco C): sai quando a tarefa chega a
+// alguém já liberada — criada completa, liberada da triagem ou passada para
+// outra pessoa. Quem passou a tarefa para si mesmo não é avisado.
+async function avisarAtribuicao(
+  tx: Tx,
+  t: { id: string; titulo: string; prazo: string | null; criadorId: string },
+  responsavelId: string,
+  atorId: string
+) {
+  if (responsavelId === atorId) return;
+  const hoje = hojeISO();
+  const [ator, criador, dest] = await Promise.all([nomeDe(tx, atorId), nomeDe(tx, t.criadorId), nomeDe(tx, responsavelId)]);
+  const prazo = `Prazo: ${descreverPrazo(t.prazo, hoje).toLowerCase()}.`;
+  const quem =
+    atorId === t.criadorId
+      ? `${primeiroNome(ator ?? "")} te pediu: *${t.titulo}*.`
+      : `${primeiroNome(ator ?? "")} te passou: *${t.titulo}* (pedido de ${primeiroNome(criador ?? "")}).`;
+  await enfileirar(
+    tx,
+    {
+      chave: `${t.id}|atribuicao|${hoje}|${responsavelId}`,
+      tarefaId: t.id,
+      regra: "atribuicao",
+      autorId: atorId,
+      destinatarioId: responsavelId,
+      texto: `Oi, ${primeiroNome(dest ?? "")}! ${quem} ${prazo}`,
+    },
+    hoje
+  );
+}
+
 // Lê a tarefa travando a linha até o fim da transação.
 async function travar(tx: Tx, id: string) {
   if (!FORMATO_UUID.test(id)) return undefined;
@@ -124,6 +157,8 @@ export async function criarTarefa(
       atorId: ator.id,
       depois: estado === "triagem" ? "Pedida manualmente (foi pra triagem)" : "Pedida manualmente",
     });
+    if (estado === "a_fazer")
+      await avisarAtribuicao(tx, { id: t.id, titulo: dados.titulo.trim(), prazo: dados.prazo, criadorId: ator.id }, dados.responsavelId!, ator.id);
     return t.id;
   });
   return { ok: true, id, estado };
@@ -176,6 +211,8 @@ export async function editarTarefa(
     if (alteracoes.prioridade !== undefined)
       eventos.push({ tarefaId: id, tipo: "prioridade", atorId: ator.id, antes: atual.prioridade, depois: alteracoes.prioridade });
     if (eventos.length) await tx.insert(eventosTarefa).values(eventos);
+    if (alteracoes.responsavelId && !["triagem", "concluida"].includes(atual.estado))
+      await avisarAtribuicao(tx, { ...atual, titulo: depois.titulo, prazo: depois.prazo }, alteracoes.responsavelId, ator.id);
     return { ok: true, versao: salva.versao };
   });
 }
@@ -234,6 +271,7 @@ export async function mudarEtapa(
       antes: atual.estado,
       depois: bloqueando ? `${para} — ${motivoLimpo}` : para,
     });
+    if (atual.estado === "triagem") await avisarAtribuicao(tx, atual, atual.responsavelId!, ator.id);
     return { ok: true, versao: salva.versao };
   });
 }
