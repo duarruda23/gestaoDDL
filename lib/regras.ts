@@ -52,7 +52,10 @@ export const ORDEM_PRIORIDADE: Record<Prioridade, number> = {
 
 // ---- Máquina de estados (seção 4 do spec) ----
 
-export function transicoesPermitidas(t: Tarefa, frente: Frente | undefined): Estado[] {
+export function transicoesPermitidas(
+  t: Pick<Tarefa, "estado" | "estadoAnterior">,
+  frente: Pick<Frente, "usaRevisao"> | undefined | null
+): Estado[] {
   const usaRevisao = frente?.usaRevisao ?? false;
   switch (t.estado) {
     case "triagem":
@@ -90,7 +93,7 @@ export function rotuloTransicao(de: Estado, para: Estado): string {
 }
 
 // Uma tarefa só sai da triagem com dono e prazo (seção 4, passo 3).
-export function pendenciasParaLiberar(t: Tarefa): string[] {
+export function pendenciasParaLiberar(t: Pick<Tarefa, "responsavelId" | "prazo" | "frenteId">): string[] {
   const faltas: string[] = [];
   if (!t.responsavelId) faltas.push("responsável");
   if (!t.prazo) faltas.push("prazo");
@@ -124,21 +127,25 @@ export function podeDelegarAcessos(u: Usuario | null | undefined): boolean {
 
 // ---- Situação de prazo ----
 
-export function estaAtiva(t: Tarefa): boolean {
+// As funções de prazo e etapa pedem só os campos que usam: servem tanto para
+// as tarefas do protótipo quanto para as linhas do banco.
+type ComPrazo = Pick<Tarefa, "estado" | "prazo">;
+
+export function estaAtiva(t: Pick<Tarefa, "estado">): boolean {
   return t.estado !== "concluida" && t.estado !== "arquivada";
 }
 
-export function estaVencida(t: Tarefa, hoje = hojeISO()): boolean {
+export function estaVencida(t: ComPrazo, hoje = hojeISO()): boolean {
   return estaAtiva(t) && t.prazo !== null && diferencaDias(hoje, t.prazo) < 0;
 }
 
-export function venceEmBreve(t: Tarefa, hoje = hojeISO()): boolean {
+export function venceEmBreve(t: ComPrazo, hoje = hojeISO()): boolean {
   if (!estaAtiva(t) || !t.prazo) return false;
   const dif = diferencaDias(hoje, t.prazo);
   return dif >= 0 && dif <= 1;
 }
 
-export function ordenarPorUrgencia(a: Tarefa, b: Tarefa): number {
+export function ordenarPorUrgencia(a: Pick<Tarefa, "prazo" | "prioridade">, b: Pick<Tarefa, "prazo" | "prioridade">): number {
   const pa = a.prazo ?? "9999-12-31";
   const pb = b.prazo ?? "9999-12-31";
   if (pa !== pb) return pa < pb ? -1 : 1;

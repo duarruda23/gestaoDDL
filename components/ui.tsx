@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { Estado, Prioridade, Tarefa } from "@/lib/types";
-import { useGestao } from "@/lib/store";
+import type { Estado, Prioridade } from "@/lib/types";
+import type { TarefaVisao } from "@/lib/visao";
 import { ROTULO_ESTADO, ROTULO_PRIORIDADE, estaVencida, venceEmBreve } from "@/lib/regras";
 import { descreverPrazo } from "@/lib/datas";
 
@@ -93,7 +93,7 @@ export function EtiquetaIA() {
   );
 }
 
-export function EtiquetaPrazo({ tarefa }: { tarefa: Tarefa }) {
+export function EtiquetaPrazo({ tarefa }: { tarefa: Pick<TarefaVisao, "estado" | "prazo"> }) {
   const estado = estaVencida(tarefa) ? "late" : venceEmBreve(tarefa) ? "soon" : "ok";
   return (
     <span className={cx("dl-deadline", estado !== "ok" && `dl-deadline-${estado}`)}>
@@ -118,12 +118,9 @@ export function Avatar({ nome }: { nome: string | null }) {
   );
 }
 
-export function CartaoTarefa({ tarefa, compacto = false }: { tarefa: Tarefa; compacto?: boolean }) {
-  const { usuarios, frentes } = useGestao();
-  const resp = usuarios.find((u) => u.id === tarefa.responsavelId);
-  const pediu = usuarios.find((u) => u.id === tarefa.criadorId);
-  const frente = frentes.find((f) => f.id === tarefa.frenteId);
-  const feitos = tarefa.checklist.filter((c) => c.concluido).length;
+export function CartaoTarefa({ tarefa, compacto = false }: { tarefa: TarefaVisao; compacto?: boolean }) {
+  const resp = tarefa.responsavel;
+  const pediuOutra = tarefa.criador.id !== resp?.id;
 
   return (
     <Link href={`/tarefa/${tarefa.id}`} className="dl-card">
@@ -145,12 +142,10 @@ export function CartaoTarefa({ tarefa, compacto = false }: { tarefa: Tarefa; com
       </div>
       {!compacto && (
         <div className="dl-card-foot">
-          <span>
-            {pediu && pediu.id !== tarefa.responsavelId ? `Pedido de ${pediu.nome}` : frente?.nome ?? "Sem frente"}
-          </span>
-          {tarefa.checklist.length > 0 && (
+          <span>{pediuOutra ? `Pedido de ${tarefa.criador.nome}` : tarefa.frente?.nome ?? "Sem frente"}</span>
+          {tarefa.checklistTotal > 0 && (
             <span>
-              {feitos}/{tarefa.checklist.length} itens
+              {tarefa.checklistFeitos}/{tarefa.checklistTotal} itens
             </span>
           )}
         </div>

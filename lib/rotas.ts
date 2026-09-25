@@ -11,9 +11,9 @@ export interface Rota {
 export const ROTAS: Rota[] = [
   { href: "/", rotulo: "Início", pronta: true },
   { href: "/nova", rotulo: "Pedir", pronta: false }, // A7 (formulário) / bloco B (IA)
-  { href: "/quadro", rotulo: "Quadro", pronta: false }, // A6
-  { href: "/triagem", rotulo: "Triagem", pronta: false }, // A6
-  { href: "/painel", rotulo: "Painel", pronta: false }, // A6
+  { href: "/quadro", rotulo: "Quadro", pronta: true }, // A6 (25/09)
+  { href: "/triagem", rotulo: "Triagem", pronta: true }, // A6 (25/09)
+  { href: "/painel", rotulo: "Painel", pronta: true }, // A6 (25/09)
   { href: "/cobrancas", rotulo: "Cobranças", pronta: false }, // A8
   { href: "/equipe", rotulo: "Equipe", pronta: true }, // A4/A5 (25/09)
 ];
