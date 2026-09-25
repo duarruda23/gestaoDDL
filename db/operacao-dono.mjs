@@ -3,6 +3,8 @@
 // admin do banco (ver infra/README.md, "Conta do dono").
 //
 // Variáveis: MIGRACAO_DATABASE_URL, SITE_URL, DONO_NOME, DONO_EMAIL, DONO_WHATSAPP.
+// Opcionais: CONVIDADO_NOME, CONVIDADO_EMAIL, CONVIDADO_WHATSAPP — gera também
+// um convite de conta nova, em nome do dono (ex.: para o Eduardo testar).
 // Rodar de novo é seguro: não cria segundo dono nem duplica frentes; só gera
 // um link novo para o dono (útil se ele perder o primeiro).
 //
