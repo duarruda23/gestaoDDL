@@ -65,8 +65,13 @@ jobs:
           CONVIDADO_NOME: Eduardo
           CONVIDADO_EMAIL: eduardo@exemplo.test
         run: |
-          node db/operacao-dono.mjs | grep -q "Link de convite para eduardo@exemplo.test"
-          node db/operacao-dono.mjs | grep -q "Dono já existia"
+          mascarar() { sed -E 's#/convite/[A-Za-z0-9_-]+#/convite/<token>#g'; }
+          saida1=$(node db/operacao-dono.mjs 2>&1) || { echo "$saida1" | mascarar; exit 1; }
+          echo "$saida1" | mascarar
+          echo "$saida1" | grep -q "Link de convite para eduardo@exemplo.test"
+          saida2=$(node db/operacao-dono.mjs 2>&1) || { echo "$saida2" | mascarar; exit 1; }
+          echo "$saida2" | mascarar
+          echo "$saida2" | grep -q "Dono já existia"
           test "$(psql "$DATABASE_URL" -tAc 'select count(*) from usuarios where dono')" = "1"
           test "$(psql "$DATABASE_URL" -tAc 'select count(*) from frentes')" = "7"
           test "$(psql "$DATABASE_URL" -tAc 'select count(*) from convites')" = "4"
