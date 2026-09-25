@@ -7,7 +7,7 @@ on:
 
 jobs:
   app:
-    name: App (tipos, lint, build)
+    name: App (tipos, lint, testes, build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +19,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
+      - name: Testes (Postgres em memória com PGlite)
+        run: pnpm test
       - run: pnpm build
 
   banco:
