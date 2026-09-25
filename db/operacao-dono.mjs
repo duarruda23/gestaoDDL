@@ -86,9 +86,37 @@ try {
     JSON.stringify({ origem: "operacao-dono" }),
   ]);
 
+  // Convite opcional de conta nova, criado em nome do dono.
+  let linkConvidado = null;
+  const convidadoEmail = process.env.CONVIDADO_EMAIL?.trim().toLowerCase();
+  if (convidadoEmail) {
+    const convidadoNome = process.env.CONVIDADO_NOME?.trim() || convidadoEmail.split("@")[0];
+    const { rows: jaTem } = await cliente.query("SELECT 1 FROM usuarios WHERE lower(email) = $1", [convidadoEmail]);
+    if (jaTem.length) {
+      console.log(`${convidadoEmail} já tem conta; convite de conta nova não gerado.`);
+    } else {
+      const tokenC = randomBytes(32).toString("base64url");
+      const hashC = createHash("sha256").update(tokenC).digest("hex");
+      const { rows: c } = await cliente.query(
+        `INSERT INTO convites (token_hash, nome, email, telefone_whatsapp, criado_por_id, expira_em)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [hashC, convidadoNome, convidadoEmail, process.env.CONVIDADO_WHATSAPP?.trim() || null, donoId, expira]
+      );
+      await cliente.query("INSERT INTO eventos_acesso (tipo, ator_id, detalhes) VALUES ('convite_criado', $1, $2)", [
+        donoId,
+        JSON.stringify({ origem: "operacao-dono", conviteId: c[0].id, email: convidadoEmail, tipo: "conta_nova" }),
+      ]);
+      linkConvidado = `${site}/convite/${tokenC}`;
+    }
+  }
+
   await cliente.query("COMMIT");
   console.log("\nLink para o dono definir a senha (vale 72h, uso único; não é mostrado de novo):");
   console.log(`${site}/convite/${token}\n`);
+  if (linkConvidado) {
+    console.log(`Link de convite para ${convidadoEmail} (vale 72h, uso único):`);
+    console.log(`${linkConvidado}\n`);
+  }
 } catch (erro) {
   await cliente.query("ROLLBACK");
   console.error("Nada foi gravado:", erro.message);
