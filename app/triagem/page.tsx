@@ -7,7 +7,7 @@ import { CartaoTarefa, TituloPagina, Vazio } from "@/components/ui";
 export const metadata = { title: "Triagem · Gestão Donas de Loja" };
 
 // Triagem: pedidos que ainda não têm dono, prazo ou frente. Qualquer pessoa
-// pode liberar (modelo horizontal); o botão de liberar entra na A7.
+// pode completar e liberar (modelo horizontal), pela tela da tarefa.
 export default async function Triagem() {
   await exigirConta();
   const tarefas = await listarTriagem(obterBanco());

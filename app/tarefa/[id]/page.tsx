@@ -2,10 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { obterBanco } from "@/db";
 import { exigirConta } from "@/lib/servidor/dal";
-import { detalharTarefa } from "@/lib/servidor/consultas";
+import { detalharTarefa, listarPessoasEFrentes } from "@/lib/servidor/consultas";
 import { ROTULO_ESTADO, ROTULO_REGRA } from "@/lib/regras";
 import { formatarData, formatarDataHora } from "@/lib/datas";
 import type { RegraCobranca } from "@/lib/types";
+import { AcoesTarefa } from "@/components/tarefa/AcoesTarefa";
+import { ChecklistEditavel } from "@/components/tarefa/ChecklistEditavel";
+import { Comentar } from "@/components/tarefa/Comentar";
 import { Aviso, EtiquetaEstado, EtiquetaIA, EtiquetaPrazo, EtiquetaPrioridade, TituloSecao, Vazio } from "@/components/ui";
 
 const ROTULO_EVENTO: Record<string, string> = {
@@ -29,21 +32,31 @@ const ROTULO_ENVIO: Record<string, string> = {
   ignorado: "ignorada",
 };
 
+// Etapa é gravada como "estado" ou "estado — detalhe" (motivo do bloqueio,
+// desfez o arquivamento); mostra o nome da etapa e mantém o detalhe.
+function rotuloEtapa(v: string): string {
+  const [etapa, ...resto] = v.split(" — ");
+  const nome = etapa in ROTULO_ESTADO ? ROTULO_ESTADO[etapa as keyof typeof ROTULO_ESTADO] : etapa;
+  return resto.length ? `${nome} (${resto.join(" — ")})` : nome;
+}
+
 function descreverMudanca(tipo: string, antes: string | null, depois: string | null): string | null {
   const rotulo = (v: string | null) =>
-    v == null ? "—" : tipo === "estado" && v in ROTULO_ESTADO ? ROTULO_ESTADO[v as keyof typeof ROTULO_ESTADO] : tipo === "prazo" ? formatarData(v) : v;
+    v == null ? "—" : tipo === "estado" ? rotuloEtapa(v) : tipo === "prazo" ? formatarData(v) : v;
   if (antes == null && depois == null) return null;
   if (antes == null) return rotulo(depois);
   return `${rotulo(antes)} → ${rotulo(depois)}`;
 }
 
-// Detalhe da tarefa, só leitura na A6. As ações (etapa, comentário,
-// checklist, cobrar) entram na A7/A8.
+// Detalhe da tarefa. Modelo horizontal: qualquer conta muda etapa, edita,
+// comenta e mexe no checklist. Cobrar entra na A8.
 export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]">) {
   await exigirConta();
   const { id } = await params;
-  const t = await detalharTarefa(obterBanco(), id);
+  const banco = obterBanco();
+  const [t, { pessoas, frentes }] = await Promise.all([detalharTarefa(banco, id), listarPessoasEFrentes(banco)]);
   if (!t) notFound();
+  const arquivada = t.estado === "arquivada";
 
   return (
     <div className="flex flex-col gap-6">
@@ -62,6 +75,8 @@ export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]"
         <h1 className="dl-heading">{t.titulo}</h1>
         {t.descricao && <p className="max-w-2xl whitespace-pre-wrap text-ink-muted">{t.descricao}</p>}
       </header>
+
+      <AcoesTarefa key={t.versao} tarefa={t} pessoas={pessoas} frentes={frentes} />
 
       {t.estado === "bloqueada" && t.motivoBloqueio && (
         <Aviso tom="warning" titulo="Bloqueada">
@@ -102,21 +117,10 @@ export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]"
             <TituloSecao>
               Checklist {t.checklistTotal > 0 && <span className="text-ink-muted">({t.checklistFeitos}/{t.checklistTotal})</span>}
             </TituloSecao>
-            {t.checklist.length ? (
-              <ul className="dl-panel flex flex-col gap-2 text-sm">
-                {t.checklist.map((c) => (
-                  <li key={c.id} className="flex items-center gap-2">
-                    <span aria-hidden="true">{c.concluido ? "☑" : "☐"}</span>
-                    <span className={c.concluido ? "text-ink-muted line-through" : ""}>{c.texto}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <Vazio>Sem checklist.</Vazio>
-            )}
+            <ChecklistEditavel tarefaId={t.id} itens={t.checklist} arquivada={arquivada} />
           </section>
 
-          <section>
+          <section className="flex flex-col gap-3">
             <TituloSecao>Comentários</TituloSecao>
             {t.comentarios.length ? (
               <ul className="flex flex-col gap-3">
@@ -132,6 +136,7 @@ export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]"
             ) : (
               <Vazio>Ninguém comentou ainda.</Vazio>
             )}
+            {!arquivada && <Comentar tarefaId={t.id} />}
           </section>
         </div>
 
