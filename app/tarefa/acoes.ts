@@ -18,6 +18,7 @@ import {
   type DadosTarefa,
   type Resultado,
 } from "@/lib/servidor/tarefas-nucleo";
+import { cobrarTarefa } from "@/lib/servidor/cobranca-nucleo";
 
 // Server actions de tarefa. Toda ação começa pela DAL (exigirConta) e passa
 // pelo núcleo, que é quem valida e registra no histórico. Depois de gravar,
@@ -111,5 +112,18 @@ export async function removerItemAcao(tarefaId: string, itemId: string): Promise
   const conta = await exigirConta();
   const r = await removerItem(obterBanco(), conta, String(itemId));
   if (r.ok) revalidar(tarefaId);
+  return r;
+}
+
+export async function cobrarAcao(
+  id: string,
+  recado: string
+): Promise<{ ok: true; status: "pendente" | "ignorado"; destinatario: string } | { ok: false; motivo: string }> {
+  const conta = await exigirConta();
+  const r = await cobrarTarefa(obterBanco(), conta, String(id), texto(recado, 300));
+  if (r.ok) {
+    revalidar(id);
+    revalidatePath("/cobrancas");
+  }
   return r;
 }

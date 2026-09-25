@@ -3,12 +3,13 @@ import { notFound } from "next/navigation";
 import { obterBanco } from "@/db";
 import { exigirConta } from "@/lib/servidor/dal";
 import { detalharTarefa, listarPessoasEFrentes } from "@/lib/servidor/consultas";
-import { ROTULO_ESTADO, ROTULO_REGRA } from "@/lib/regras";
+import { ROTULO_ESTADO, ROTULO_REGRA, estaAtiva } from "@/lib/regras";
 import { formatarData, formatarDataHora } from "@/lib/datas";
 import type { RegraCobranca } from "@/lib/types";
 import { AcoesTarefa } from "@/components/tarefa/AcoesTarefa";
 import { ChecklistEditavel } from "@/components/tarefa/ChecklistEditavel";
 import { Comentar } from "@/components/tarefa/Comentar";
+import { Cobrar } from "@/components/tarefa/Cobrar";
 import { Aviso, EtiquetaEstado, EtiquetaIA, EtiquetaPrazo, EtiquetaPrioridade, TituloSecao, Vazio } from "@/components/ui";
 
 const ROTULO_EVENTO: Record<string, string> = {
@@ -49,14 +50,17 @@ function descreverMudanca(tipo: string, antes: string | null, depois: string | n
 }
 
 // Detalhe da tarefa. Modelo horizontal: qualquer conta muda etapa, edita,
-// comenta e mexe no checklist. Cobrar entra na A8.
+// comenta e mexe no checklist. Cobrar vai para a fila do WhatsApp.
 export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]">) {
-  await exigirConta();
+  const conta = await exigirConta();
   const { id } = await params;
   const banco = obterBanco();
   const [t, { pessoas, frentes }] = await Promise.all([detalharTarefa(banco, id), listarPessoasEFrentes(banco)]);
   if (!t) notFound();
   const arquivada = t.estado === "arquivada";
+  // Modelo horizontal: qualquer um cobra quem faz, desde que não seja a própria pessoa.
+  const podeCobrar = !!t.responsavel && t.responsavel.id !== conta.id && estaAtiva(t);
+  const ultimaCobranca = t.mensagens.find((m) => m.regra === "cobranca_manual");
 
   return (
     <div className="flex flex-col gap-6">
@@ -75,6 +79,8 @@ export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]"
         <h1 className="dl-heading">{t.titulo}</h1>
         {t.descricao && <p className="max-w-2xl whitespace-pre-wrap text-ink-muted">{t.descricao}</p>}
       </header>
+
+      {podeCobrar && <Cobrar tarefaId={t.id} responsavel={t.responsavel!.nome} ultimaPor={ultimaCobranca?.autor ?? null} />}
 
       <AcoesTarefa key={t.versao} tarefa={t} pessoas={pessoas} frentes={frentes} />
 

@@ -31,7 +31,7 @@ export default async function Painel() {
         <Contador valor={p.vencendo.length} rotulo="Vencem em breve" tom="warning" />
         <Contador valor={p.bloqueadas.length} rotulo="Bloqueadas" tom="warning" />
         <Contador href="/triagem" valor={p.semDono.length} rotulo="Sem dono" tom="warning" />
-        <Contador valor={p.falhasWhatsapp} rotulo="Falhas no WhatsApp" tom="danger" />
+        <Contador href="/cobrancas?status=falhou" valor={p.falhasWhatsapp} rotulo="Falhas no WhatsApp" tom="danger" />
       </section>
 
       <section>
