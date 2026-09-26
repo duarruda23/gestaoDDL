@@ -5,6 +5,7 @@ import { obterBanco } from "@/db";
 import { exigirConta } from "@/lib/servidor/dal";
 import { criarConvite } from "@/lib/servidor/convite-nucleo";
 import { atualizarMeusDados, definirGerenciaAcessos, removerAcesso, restaurarAcesso } from "@/lib/servidor/acessos-nucleo";
+import { arquivarModelo } from "@/lib/servidor/modelos-nucleo";
 
 // Server actions da tela Equipe. Toda ação começa pela DAL (exigirConta):
 // sem sessão válida, nada acontece. As regras ficam no núcleo, testadas.
@@ -64,6 +65,16 @@ export async function restaurarAcessoAcao(_: EstadoAcao, dados: FormData): Promi
 export async function permissaoAcao(_: EstadoAcao, dados: FormData): Promise<EstadoAcao> {
   const conta = await exigirConta();
   const r = await definirGerenciaAcessos(obterBanco(), conta, texto(dados, "alvoId", 60), dados.get("pode") === "sim");
+  if (!r.ok) return { ok: false, mensagem: r.motivo };
+  revalidatePath("/equipe");
+  return { ok: true, mensagem: null };
+}
+
+// Modelos de checklist: qualquer conta arquiva (modelo horizontal). Arquivar
+// não mexe nas tarefas que já usaram o modelo.
+export async function arquivarModeloAcao(id: string): Promise<EstadoAcao> {
+  await exigirConta();
+  const r = await arquivarModelo(obterBanco(), String(id));
   if (!r.ok) return { ok: false, mensagem: r.motivo };
   revalidatePath("/equipe");
   return { ok: true, mensagem: null };

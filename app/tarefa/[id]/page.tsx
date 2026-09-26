@@ -10,6 +10,9 @@ import { AcoesTarefa } from "@/components/tarefa/AcoesTarefa";
 import { ChecklistEditavel } from "@/components/tarefa/ChecklistEditavel";
 import { Comentar } from "@/components/tarefa/Comentar";
 import { Cobrar } from "@/components/tarefa/Cobrar";
+import { Anexos } from "@/components/tarefa/Anexos";
+import { listarModelos } from "@/lib/servidor/modelos-nucleo";
+import { listarAnexos } from "@/lib/servidor/anexos-nucleo";
 import { Aviso, EtiquetaEstado, EtiquetaIA, EtiquetaPrazo, EtiquetaPrioridade, TituloSecao, Vazio } from "@/components/ui";
 
 const ROTULO_EVENTO: Record<string, string> = {
@@ -23,6 +26,7 @@ const ROTULO_EVENTO: Record<string, string> = {
   checklist: "Mexeu no checklist",
   cobranca: "Cobrou",
   acesso: "Acesso",
+  anexo: "Anexos",
 };
 
 const ROTULO_ENVIO: Record<string, string> = {
@@ -55,8 +59,9 @@ export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]"
   const conta = await exigirConta();
   const { id } = await params;
   const banco = obterBanco();
-  const [t, { pessoas, frentes }] = await Promise.all([detalharTarefa(banco, id), listarPessoasEFrentes(banco)]);
+  const t = await detalharTarefa(banco, id);
   if (!t) notFound();
+  const [{ pessoas, frentes }, modelos, anexos] = await Promise.all([listarPessoasEFrentes(banco), listarModelos(banco), listarAnexos(banco, t.id)]);
   const arquivada = t.estado === "arquivada";
   // Modelo horizontal: qualquer um cobra quem faz, desde que não seja a própria pessoa.
   const podeCobrar = !!t.responsavel && t.responsavel.id !== conta.id && estaAtiva(t);
@@ -123,7 +128,12 @@ export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]"
             <TituloSecao>
               Checklist {t.checklistTotal > 0 && <span className="text-ink-muted">({t.checklistFeitos}/{t.checklistTotal})</span>}
             </TituloSecao>
-            <ChecklistEditavel tarefaId={t.id} itens={t.checklist} arquivada={arquivada} />
+            <ChecklistEditavel tarefaId={t.id} itens={t.checklist} arquivada={arquivada} modelos={modelos.map(({ id, nome }) => ({ id, nome }))} />
+          </section>
+
+          <section>
+            <TituloSecao>Anexos {anexos.length > 0 && <span className="text-ink-muted">({anexos.length})</span>}</TituloSecao>
+            <Anexos tarefaId={t.id} anexos={anexos} arquivada={arquivada} />
           </section>
 
           <section className="flex flex-col gap-3">

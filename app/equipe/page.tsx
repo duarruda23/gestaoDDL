@@ -7,6 +7,8 @@ import { formatarDataHora } from "@/lib/datas";
 import { FormMeusDados } from "@/components/equipe/FormMeusDados";
 import { FormConvidar } from "@/components/equipe/FormConvidar";
 import { ListaAcessos, type PessoaAcesso, type PessoaSemAcesso } from "@/components/equipe/ListaAcessos";
+import { ListaModelos } from "@/components/equipe/ListaModelos";
+import { listarModelos } from "@/lib/servidor/modelos-nucleo";
 
 export const metadata = { title: "Equipe · Gestão Donas de Loja" };
 
@@ -14,7 +16,7 @@ export default async function Equipe() {
   const eu = await exigirConta();
   const banco = obterBanco();
 
-  const [contas, abertasPorPessoa, pendentes] = await Promise.all([
+  const [contas, abertasPorPessoa, pendentes, modelos] = await Promise.all([
     banco.select().from(usuarios).orderBy(asc(usuarios.criadoEm)),
     banco
       .select({ id: tarefas.responsavelId, n: sql<number>`count(*)::int` })
@@ -26,6 +28,7 @@ export default async function Equipe() {
       .from(convites)
       .where(and(isNull(convites.usadoEm), gt(convites.expiraEm, new Date())))
       .orderBy(asc(convites.expiraEm)),
+    listarModelos(banco),
   ]);
 
   const nomeDe = (id: string | null) => contas.find((c) => c.id === id)?.nome ?? "—";
@@ -98,6 +101,8 @@ export default async function Equipe() {
       )}
 
       <ListaAcessos pessoas={pessoas} semAcesso={semAcesso} gestores={gestores} gerencio={gerencio} souDono={souDono} />
+
+      <ListaModelos modelos={modelos} />
     </div>
   );
 }

@@ -49,6 +49,7 @@ export const tipoEventoTarefa = pgEnum("tipo_evento_tarefa", [
   "checklist",
   "cobranca",
   "acesso",
+  "anexo",
 ]);
 export const tipoEventoAcesso = pgEnum("tipo_evento_acesso", [
   "conta_criada",
@@ -259,6 +260,23 @@ export const checklistItens = pgTable("checklist_itens", {
   concluidoEm: timestamp("concluido_em", { withTimezone: true }),
   concluidoPorId: uuid("concluido_por_id").references(() => usuarios.id),
 });
+
+// Modelos de checklist (bloco D): listas de passos reaproveitáveis, como
+// "Presencial: pré-evento". Modelo horizontal: qualquer conta cria e usa.
+// Arquivar em vez de apagar, para não sumir de quem estava usando.
+export const modelosChecklist = pgTable(
+  "modelos_checklist",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    nome: text("nome").notNull(),
+    itens: text("itens").array().notNull(),
+    frenteId: uuid("frente_id").references(() => frentes.id),
+    criadoPorId: uuid("criado_por_id").notNull().references(() => usuarios.id),
+    ativo: boolean("ativo").notNull().default(true),
+    criadoEm: criadoEm(),
+  },
+  (t) => [uniqueIndex("modelos_nome_unico").on(sql`lower(${t.nome})`).where(sql`${t.ativo}`)]
+);
 
 export const comentarios = pgTable(
   "comentarios",

@@ -101,3 +101,49 @@ export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO()):
   }
   return resultado;
 }
+
+// D3 — resumo diário: uma mensagem por pessoa, de manhã, com o que está com
+// ela e o que ela pediu e atrasou. Quem não tem nada em aberto não recebe.
+// O n8n chama POST /api/n8n/resumo uma vez por dia (ex.: 8h).
+export async function gerarResumoDiario(banco: Banco, hoje = hojeISO()): Promise<ResultadoRodada> {
+  const config = await lerConfig(banco);
+  const resultado: ResultadoRodada = { novas: 0, ignoradas: 0, jaExistiam: 0 };
+  if (!config?.ativa) return resultado;
+
+  const [pessoas, abertas] = await Promise.all([
+    banco.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios).where(eq(usuarios.ativo, true)),
+    banco
+      .select({ responsavelId: tarefas.responsavelId, criadorId: tarefas.criadorId, prazo: tarefas.prazo, estado: tarefas.estado })
+      .from(tarefas)
+      .where(inArray(tarefas.estado, ["a_fazer", "em_andamento", "em_revisao", "bloqueada"])),
+  ]);
+
+  const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
+  for (const p of pessoas) {
+    const comEla = abertas.filter((t) => t.responsavelId === p.id);
+    const vencidas = comEla.filter((t) => t.prazo && diferencaDias(hoje, t.prazo) < 0).length;
+    const hojeOuAmanha = comEla.filter((t) => t.prazo && [0, 1].includes(diferencaDias(hoje, t.prazo))).length;
+    const bloqueadas = comEla.filter((t) => t.estado === "bloqueada").length;
+    const pediuAtrasadas = abertas.filter((t) => t.criadorId === p.id && t.responsavelId !== p.id && t.prazo && diferencaDias(hoje, t.prazo) < 0).length;
+    if (!comEla.length && !pediuAtrasadas) continue;
+
+    const partes = [`${plural(comEla.length, "tarefa", "tarefas")} com você`];
+    if (vencidas) partes.push(`*${plural(vencidas, "vencida", "vencidas")}*`);
+    if (hojeOuAmanha) partes.push(`${hojeOuAmanha} pra hoje ou amanhã`);
+    if (bloqueadas) partes.push(plural(bloqueadas, "bloqueada", "bloqueadas"));
+    let texto = `Bom dia, ${primeiroNome(p.nome)}! ${partes.join(", ")}.`;
+    if (!comEla.length) texto = `Bom dia, ${primeiroNome(p.nome)}!`;
+    if (pediuAtrasadas) texto += ` ${plural(pediuAtrasadas, "pedido seu está atrasado", "pedidos seus estão atrasados")} com outras pessoas.`;
+    texto += process.env.SITE_URL ? ` Detalhes: ${process.env.SITE_URL}` : " Detalhes no sistema de gestão.";
+
+    const r = await enfileirar(
+      banco,
+      { chave: `resumo|${hoje}|${p.id}`, tarefaId: null, regra: "resumo_diario", autorId: null, destinatarioId: p.id, texto },
+      hoje
+    );
+    if (!r.inserida) resultado.jaExistiam++;
+    else if (r.status === "ignorado") resultado.ignoradas++;
+    else resultado.novas++;
+  }
+  return resultado;
+}

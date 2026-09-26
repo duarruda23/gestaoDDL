@@ -11,10 +11,12 @@ export function FormNovaTarefa({
   pessoas,
   frentes,
   euId,
+  modelos = [],
 }: {
   pessoas: Pessoa[];
   frentes: { id: string; nome: string }[];
   euId: string;
+  modelos?: { id: string; nome: string; itens: string[]; frenteId: string | null }[];
 }) {
   const [estado, acao, enviando] = useActionState<EstadoNova, FormData>(criarTarefaAcao, { ok: false, mensagem: null });
   // Tudo controlado: o React limpa campos não controlados depois de cada envio,
@@ -70,6 +72,29 @@ export function FormNovaTarefa({
           </select>
         </Campo>
       </div>
+      {modelos.length > 0 && (
+        <Campo id="nv-modelo" rotulo="Começar de um modelo" ajuda="Opcional. Preenche o checklist (e a frente, se estiver vazia).">
+          <select
+            id="nv-modelo"
+            className="dl-input"
+            value=""
+            onChange={(e) => {
+              const m = modelos.find((x) => x.id === e.target.value);
+              if (!m) return;
+              const atuais = itens.split("\n").map((x) => x.trim()).filter(Boolean);
+              setItens([...atuais, ...m.itens.filter((x) => !atuais.includes(x))].join("\n"));
+              if (!frenteId && m.frenteId) setFrenteId(m.frenteId);
+            }}
+          >
+            <option value="">Escolher modelo…</option>
+            {modelos.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nome} ({m.itens.length} itens)
+              </option>
+            ))}
+          </select>
+        </Campo>
+      )}
       <Campo id="nv-itens" rotulo="Checklist" ajuda="Opcional. Um item por linha.">
         <textarea id="nv-itens" name="itens" className="dl-input" value={itens} onChange={(e) => setItens(e.target.value)} placeholder={"Cotar três hotéis\nReservar"} />
       </Campo>

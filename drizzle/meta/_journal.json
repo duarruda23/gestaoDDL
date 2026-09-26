@@ -15,6 +15,20 @@
       "when": 1790293457330,
       "tag": "0001_protecoes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790443183547,
+      "tag": "0002_modelos_checklist",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790443243298,
+      "tag": "0003_evento_anexo",
+      "breakpoints": true
     }
   ]
 }

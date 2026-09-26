@@ -27,12 +27,14 @@ export function Pedir({
   euId,
   abertas,
   temIA,
+  modelos,
 }: {
   pessoas: PessoaEditor[];
   frentes: { id: string; nome: string }[];
   euId: string;
   abertas: PropostaSalva[];
   temIA: boolean;
+  modelos: { id: string; nome: string; itens: string[]; frenteId: string | null }[];
 }) {
   const [modo, setModo] = useState<"texto" | "formulario">("texto");
   const [texto, setTexto] = useState("");
@@ -112,7 +114,7 @@ export function Pedir({
         />
       </div>
 
-      {modo === "formulario" && <FormNovaTarefa pessoas={pessoas} frentes={frentes} euId={euId} />}
+      {modo === "formulario" && <FormNovaTarefa pessoas={pessoas} frentes={frentes} euId={euId} modelos={modelos} />}
 
       {modo === "texto" && (
         <div className="flex flex-col gap-6">

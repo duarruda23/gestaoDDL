@@ -19,6 +19,8 @@ import {
   type Resultado,
 } from "@/lib/servidor/tarefas-nucleo";
 import { cobrarTarefa } from "@/lib/servidor/cobranca-nucleo";
+import { aplicarModelo, modeloDaTarefa } from "@/lib/servidor/modelos-nucleo";
+import { adicionarLink, enviarArquivo, removerAnexo, TAMANHO_MAXIMO } from "@/lib/servidor/anexos-nucleo";
 
 // Server actions de tarefa. Toda ação começa pela DAL (exigirConta) e passa
 // pelo núcleo, que é quem valida e registra no histórico. Depois de gravar,
@@ -126,4 +128,51 @@ export async function cobrarAcao(
     revalidatePath("/cobrancas");
   }
   return r;
+}
+
+// ---- Bloco D: modelos de checklist e anexos ----
+
+export async function aplicarModeloAcao(tarefaId: string, modeloId: string): Promise<{ ok: true; adicionados: number } | { ok: false; motivo: string }> {
+  const conta = await exigirConta();
+  const r = await aplicarModelo(obterBanco(), conta, String(tarefaId), String(modeloId));
+  if (r.ok) revalidar(tarefaId);
+  return r;
+}
+
+export async function salvarComoModeloAcao(tarefaId: string, nome: string): Promise<Simples> {
+  const conta = await exigirConta();
+  const r = await modeloDaTarefa(obterBanco(), conta, String(tarefaId), texto(nome, 80));
+  if (r.ok) {
+    revalidatePath(`/tarefa/${tarefaId}`);
+    revalidatePath("/equipe");
+  }
+  return r.ok ? { ok: true } : r;
+}
+
+export async function enviarAnexoAcao(tarefaId: string, dados: FormData): Promise<Simples> {
+  const conta = await exigirConta();
+  const arquivo = dados.get("arquivo");
+  if (!(arquivo instanceof File)) return { ok: false, motivo: "Escolha um arquivo." };
+  if (arquivo.size > TAMANHO_MAXIMO) return { ok: false, motivo: "Arquivo acima de 8 MB. Envie um link (Drive, por exemplo)." };
+  const r = await enviarArquivo(obterBanco(), conta, String(tarefaId), {
+    nome: arquivo.name,
+    tipo: arquivo.type,
+    bytes: new Uint8Array(await arquivo.arrayBuffer()),
+  });
+  if (r.ok) revalidatePath(`/tarefa/${tarefaId}`);
+  return r.ok ? { ok: true } : r;
+}
+
+export async function adicionarLinkAcao(tarefaId: string, url: string, nome: string): Promise<Simples> {
+  const conta = await exigirConta();
+  const r = await adicionarLink(obterBanco(), conta, String(tarefaId), { url: texto(url, 2000), nome: texto(nome, 150) });
+  if (r.ok) revalidatePath(`/tarefa/${tarefaId}`);
+  return r.ok ? { ok: true } : r;
+}
+
+export async function removerAnexoAcao(anexoId: string): Promise<Simples> {
+  const conta = await exigirConta();
+  const r = await removerAnexo(obterBanco(), conta, String(anexoId));
+  if (r.ok) revalidatePath(`/tarefa/${r.tarefaId}`);
+  return r.ok ? { ok: true } : r;
 }

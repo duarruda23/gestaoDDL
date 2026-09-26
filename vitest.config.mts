@@ -19,5 +19,8 @@ export default defineConfig({
     // PGlite sobe um Postgres em memória por teste; dá tempo de migrar.
     testTimeout: 20_000,
     hookTimeout: 30_000,
+    // Cada arquivo sobe o próprio PGlite (Postgres em WASM, ~centenas de MB).
+    // Com muitos em paralelo a máquina engasga e todos estouram o tempo.
+    maxWorkers: 4,
   },
 });
