@@ -1,22 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from "motion/react";
 import { ChartColumn, Ellipsis, House, Inbox, LayoutGrid, LogOut, MessageCircle, Moon, Plus, Sun, Users } from "lucide-react";
-import { useGestao } from "@/lib/store";
+import { ROTAS, rotaPronta } from "@/lib/rotas";
 import { Avatar } from "./ui";
 
-const ITENS = [
-  { href: "/", rotulo: "Início" },
-  { href: "/nova", rotulo: "Pedir" },
-  { href: "/quadro", rotulo: "Quadro" },
-  { href: "/triagem", rotulo: "Triagem" },
-  { href: "/painel", rotulo: "Painel" },
-  { href: "/cobrancas", rotulo: "Cobranças" },
-  { href: "/equipe", rotulo: "Equipe" },
-];
+// Navegação do sistema real: a conta vem do servidor (sessão) e sair é uma
+// server action. Só aparecem as telas que já estão ligadas ao banco.
+
+export interface ContaNav {
+  nome: string;
+}
+
+type Sair = () => Promise<void>;
 
 const CHAVE_TEMA = "gestao-donas:tema";
 
@@ -64,20 +63,40 @@ function projetar(velocidade: number, desaceleracao = 0.998): number {
   return ((velocidade / 1000) * desaceleracao) / (1 - desaceleracao);
 }
 
-function FolhaMais({ aberta, onFechar, tema, alternarTema }: { aberta: boolean; onFechar: () => void; tema: "dark" | "light"; alternarTema: () => void }) {
+const ITENS_MAIS = [
+  { href: "/triagem", rotulo: "Triagem", icone: Inbox },
+  { href: "/cobrancas", rotulo: "Cobranças", icone: MessageCircle },
+  { href: "/equipe", rotulo: "Equipe e acessos", icone: Users },
+];
+
+const CLASSE_ITEM =
+  "flex w-full items-center gap-3 rounded-[var(--radius-xl)] px-3 py-3.5 text-left text-[15px] font-semibold text-ink hover:bg-surface-section active:bg-surface-section aria-[current=page]:text-brand-text";
+
+function FolhaMais({
+  aberta,
+  onFechar,
+  tema,
+  alternarTema,
+  sair,
+}: {
+  aberta: boolean;
+  onFechar: () => void;
+  tema: "dark" | "light";
+  alternarTema: () => void;
+  sair: Sair;
+}) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { sair, tarefas } = useGestao();
   const reduzir = useReducedMotion();
   const [velocidadeSaida, setVelocidadeSaida] = useState(0);
-  const primeiroLink = useRef<HTMLAnchorElement>(null);
-  const naTriagem = tarefas.filter((t) => t.estado === "triagem").length;
+  const folha = useRef<HTMLDivElement>(null);
+  const itens = ITENS_MAIS.filter((i) => rotaPronta(i.href));
 
   useEffect(() => {
     if (!aberta) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setVelocidadeSaida(0);
-    primeiroLink.current?.focus();
+    // Foco no primeiro item da folha (link ou botão), para teclado e leitor de tela.
+    folha.current?.querySelector<HTMLElement>("a, button")?.focus();
     const aoTeclar = (e: KeyboardEvent) => e.key === "Escape" && onFechar();
     window.addEventListener("keydown", aoTeclar);
     return () => window.removeEventListener("keydown", aoTeclar);
@@ -85,18 +104,11 @@ function FolhaMais({ aberta, onFechar, tema, alternarTema }: { aberta: boolean; 
 
   function aoSoltar(_: unknown, info: PanInfo) {
     // Decide pelo destino projetado, não pela posição de soltura: um peteleco curto fecha.
-    const destino = info.offset.y + projetar(info.velocity.y);
-    if (destino > 140) {
+    if (info.offset.y + projetar(info.velocity.y) > 140) {
       setVelocidadeSaida(info.velocity.y); // a saída continua na velocidade do dedo
       onFechar();
     }
   }
-
-  const itens = [
-    { href: "/triagem", rotulo: "Triagem", icone: Inbox, extra: naTriagem ? `${naTriagem} pedido(s)` : null },
-    { href: "/cobrancas", rotulo: "Cobranças", icone: MessageCircle, extra: null },
-    { href: "/equipe", rotulo: "Equipe e acessos", icone: Users, extra: null },
-  ];
 
   return (
     <AnimatePresence custom={velocidadeSaida}>
@@ -113,6 +125,7 @@ function FolhaMais({ aberta, onFechar, tema, alternarTema }: { aberta: boolean; 
           />
           <motion.div
             key="folha"
+            ref={folha}
             role="dialog"
             aria-modal="true"
             aria-label="Mais opções"
@@ -138,46 +151,36 @@ function FolhaMais({ aberta, onFechar, tema, alternarTema }: { aberta: boolean; 
             onDragEnd={aoSoltar}
           >
             <div className="dl-sheet-alca" aria-hidden="true" />
-            <nav aria-label="Mais seções" className="flex flex-col">
-              {itens.map((item, i) => {
-                const Icone = item.icone;
-                return (
-                  <Link
-                    key={item.href}
-                    ref={i === 0 ? primeiroLink : undefined}
-                    href={item.href}
-                    onClick={onFechar}
-                    aria-current={ativo(pathname, item.href) ? "page" : undefined}
-                    className="flex items-center gap-3 rounded-[var(--radius-xl)] px-3 py-3.5 text-[15px] font-semibold text-ink hover:bg-surface-section active:bg-surface-section aria-[current=page]:text-brand-text"
-                  >
-                    <Icone className="h-5 w-5 text-ink-muted" aria-hidden="true" />
-                    <span className="flex-1">{item.rotulo}</span>
-                    {item.extra && <span className="text-xs font-semibold text-warning">{item.extra}</span>}
-                  </Link>
-                );
-              })}
-            </nav>
-            <div className="mt-2 flex flex-col border-t border-line pt-2">
-              <button
-                type="button"
-                onClick={alternarTema}
-                className="flex items-center gap-3 rounded-[var(--radius-xl)] px-3 py-3.5 text-left text-[15px] font-semibold text-ink hover:bg-surface-section"
-              >
+            {itens.length > 0 && (
+              <nav aria-label="Mais seções" className="flex flex-col">
+                {itens.map((item) => {
+                  const Icone = item.icone;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={onFechar}
+                      aria-current={ativo(pathname, item.href) ? "page" : undefined}
+                      className={CLASSE_ITEM}
+                    >
+                      <Icone className="h-5 w-5 text-ink-muted" aria-hidden="true" />
+                      <span className="flex-1">{item.rotulo}</span>
+                    </Link>
+                  );
+                })}
+              </nav>
+            )}
+            <div className={`flex flex-col ${itens.length ? "mt-2 border-t border-line pt-2" : ""}`}>
+              <button type="button" onClick={alternarTema} className={CLASSE_ITEM}>
                 {tema === "dark" ? <Sun className="h-5 w-5 text-ink-muted" aria-hidden="true" /> : <Moon className="h-5 w-5 text-ink-muted" aria-hidden="true" />}
                 {tema === "dark" ? "Usar tema claro" : "Usar tema escuro"}
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onFechar();
-                  sair();
-                  router.push("/entrar");
-                }}
-                className="flex items-center gap-3 rounded-[var(--radius-xl)] px-3 py-3.5 text-left text-[15px] font-semibold text-ink hover:bg-surface-section"
-              >
-                <LogOut className="h-5 w-5 text-ink-muted" aria-hidden="true" />
-                Trocar de conta
-              </button>
+              <form action={sair}>
+                <button type="submit" className={CLASSE_ITEM}>
+                  <LogOut className="h-5 w-5 text-ink-muted" aria-hidden="true" />
+                  Sair
+                </button>
+              </form>
             </div>
           </motion.div>
         </>
@@ -186,15 +189,15 @@ function FolhaMais({ aberta, onFechar, tema, alternarTema }: { aberta: boolean; 
   );
 }
 
-function BarraAbas({ tema, alternarTema }: { tema: "dark" | "light"; alternarTema: () => void }) {
+function BarraAbas({ tema, alternarTema, sair }: { tema: "dark" | "light"; alternarTema: () => void; sair: Sair }) {
   const pathname = usePathname();
   const [maisAberta, setMaisAberta] = useState(false);
   const fecharMais = useCallback(() => setMaisAberta(false), []);
-  const noMais = ["/triagem", "/cobrancas", "/equipe"].some((h) => pathname.startsWith(h));
+  const noMais = ITENS_MAIS.some((i) => pathname.startsWith(i.href));
   const abas = [
     { href: "/", rotulo: "Início", icone: House },
     { href: "/quadro", rotulo: "Quadro", icone: LayoutGrid },
-  ];
+  ].filter((a) => rotaPronta(a.href));
 
   return (
     <>
@@ -208,16 +211,20 @@ function BarraAbas({ tema, alternarTema }: { tema: "dark" | "light"; alternarTem
             </Link>
           );
         })}
-        <Link href="/nova" className="dl-tab dl-tab-pedir" aria-current={ativo(pathname, "/nova") ? "page" : undefined}>
-          <span className="dl-tab-bolha">
-            <Plus aria-hidden="true" />
-          </span>
-          <span>Pedir</span>
-        </Link>
-        <Link href="/painel" className="dl-tab" aria-current={ativo(pathname, "/painel") ? "page" : undefined}>
-          <ChartColumn aria-hidden="true" />
-          <span>Painel</span>
-        </Link>
+        {rotaPronta("/nova") && (
+          <Link href="/nova" className="dl-tab dl-tab-pedir" aria-current={ativo(pathname, "/nova") ? "page" : undefined}>
+            <span className="dl-tab-bolha">
+              <Plus aria-hidden="true" />
+            </span>
+            <span>Pedir</span>
+          </Link>
+        )}
+        {rotaPronta("/painel") && (
+          <Link href="/painel" className="dl-tab" aria-current={ativo(pathname, "/painel") ? "page" : undefined}>
+            <ChartColumn aria-hidden="true" />
+            <span>Painel</span>
+          </Link>
+        )}
         <button
           type="button"
           className="dl-tab"
@@ -229,18 +236,16 @@ function BarraAbas({ tema, alternarTema }: { tema: "dark" | "light"; alternarTem
           <span>Mais</span>
         </button>
       </nav>
-      <FolhaMais aberta={maisAberta} onFechar={fecharMais} tema={tema} alternarTema={alternarTema} />
+      <FolhaMais aberta={maisAberta} onFechar={fecharMais} tema={tema} alternarTema={alternarTema} sair={sair} />
     </>
   );
 }
 
-export function Nav() {
+export function Nav({ conta, sair }: { conta: ContaNav | null; sair: Sair }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { usuarioAtual, sair, tarefas } = useGestao();
   const [tema, alternarTema] = useTema();
   const rolou = useRolou();
-  const naTriagem = tarefas.filter((t) => t.estado === "triagem").length;
+  const itens = ROTAS.filter((r) => r.pronta);
 
   return (
     <>
@@ -269,41 +274,33 @@ export function Nav() {
               {tema === "dark" ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
               {tema === "dark" ? "Claro" : "Escuro"}
             </button>
-            {usuarioAtual && (
+            {conta && (
               <>
                 <span className="flex items-center gap-2 text-sm font-semibold">
-                  <Avatar nome={usuarioAtual.nome} />
-                  <span>{usuarioAtual.nome}</span>
+                  <Avatar nome={conta.nome} />
+                  <span>{conta.nome}</span>
                 </span>
-                <button
-                  type="button"
-                  className="dl-btn dl-btn-secondary !min-h-9 !px-3 hidden md:inline-flex"
-                  onClick={() => {
-                    sair();
-                    router.push("/entrar");
-                  }}
-                >
-                  Trocar
-                </button>
+                <form action={sair} className="hidden md:block">
+                  <button type="submit" className="dl-btn dl-btn-secondary !min-h-9 !px-3">
+                    Sair
+                  </button>
+                </form>
               </>
             )}
           </div>
         </div>
 
-        {usuarioAtual && (
+        {conta && itens.length > 1 && (
           <nav className="max-w-6xl mx-auto px-4 sm:px-6 pb-2 hidden md:flex gap-1 overflow-x-auto" aria-label="Seções">
-            {ITENS.map((item) => (
+            {itens.map((item) => (
               <Link key={item.href} href={item.href} className="dl-nav-link" aria-current={ativo(pathname, item.href) ? "page" : undefined}>
                 {item.rotulo}
-                {item.href === "/triagem" && naTriagem > 0 && (
-                  <span className="ml-1.5 rounded-full bg-warning-soft px-1.5 text-xs text-ink">{naTriagem}</span>
-                )}
               </Link>
             ))}
           </nav>
         )}
       </header>
-      {usuarioAtual && <BarraAbas tema={tema} alternarTema={alternarTema} />}
+      {conta && <BarraAbas tema={tema} alternarTema={alternarTema} sair={sair} />}
     </>
   );
 }

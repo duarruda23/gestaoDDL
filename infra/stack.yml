@@ -40,12 +40,16 @@ services:
     image: gestao-donas-app:${VERSAO}
     environment:
       DATABASE_URL: postgres://${PG_APP_USER}:${PG_APP_PASSWORD}@postgres.:5432/gestao_donas
+      SITE_URL: https://${DOMINIO} # links de convite
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       IA_PROVEDOR: ${IA_PROVEDOR}
       N8N_TOKEN: ${N8N_TOKEN}
       SESSAO_SEGREDO: ${SESSAO_SEGREDO}
+      ANEXOS_DIR: /dados/anexos
+    volumes:
+      - gestao_donas_anexos:/dados/anexos # arquivos anexados às tarefas
     networks: [interna, trafegodeloja]
     deploy:
       replicas: 1
@@ -74,6 +78,7 @@ services:
       MANTER_DIAS: ${BACKUP_MANTER_DIAS}
     volumes:
       - gestao_donas_backups:/backups
+      - gestao_donas_anexos:/anexos:ro
       - /opt/gestao-ddl/infra/backup.sh:/backup.sh:ro
     entrypoint: ["/bin/sh", "/backup.sh"]
     networks: [interna]
@@ -86,6 +91,7 @@ services:
 volumes:
   gestao_donas_pg_data:
   gestao_donas_backups:
+  gestao_donas_anexos:
 
 networks:
   interna:

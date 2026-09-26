@@ -1,0 +1,1 @@
+ALTER TYPE "public"."tipo_evento_tarefa" ADD VALUE 'anexo';

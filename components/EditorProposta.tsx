@@ -1,13 +1,14 @@
 "use client";
 
-import { useGestao } from "@/lib/store";
 import type { Proposta } from "@/lib/types";
 import { ROTULO_PRIORIDADE } from "@/lib/regras";
 import { descreverPrazo } from "@/lib/datas";
 import { Campo } from "./ui";
 
-// Editor usado tanto na revisão das propostas da IA quanto no formulário
-// manual: os dois modos mostram os mesmos dados antes de salvar (seção 4).
+// Revisão de uma proposta da IA antes de virar tarefa (seção 6 do spec):
+// cada campo mostra o trecho do pedido que o fundamenta e se foi deduzido.
+
+export type PessoaEditor = { id: string; nome: string; funcao: string };
 
 // EvidenceNote do design system: trecho do pedido + selo "deduzido".
 function Evidencia({ proposta, campo }: { proposta: Proposta; campo: string }) {
@@ -33,15 +34,18 @@ function Evidencia({ proposta, campo }: { proposta: Proposta; campo: string }) {
 export function EditorProposta({
   proposta,
   onChange,
-  mostrarOrigem,
+  pessoas,
+  frentes,
+  euId,
   prefixo,
 }: {
   proposta: Proposta;
   onChange: (p: Proposta) => void;
-  mostrarOrigem: boolean;
+  pessoas: PessoaEditor[];
+  frentes: { id: string; nome: string }[];
+  euId: string;
   prefixo: string;
 }) {
-  const { usuarios, frentes, usuarioAtual } = useGestao();
   const set = <K extends keyof Proposta>(k: K, v: Proposta[K]) => {
     // Campo alterado por uma pessoa deixa de ser "deduzido".
     const campo = k === "responsavelId" ? "responsavel_id" : k === "frenteId" ? "frente_id" : String(k);
@@ -52,13 +56,14 @@ export function EditorProposta({
   return (
     <div className="flex flex-col gap-4">
       <Campo id={id("titulo")} rotulo="O que precisa ser feito">
-        <input id={id("titulo")} className="dl-input" value={proposta.titulo} onChange={(e) => set("titulo", e.target.value)} />
+        <input id={id("titulo")} className="dl-input" maxLength={200} value={proposta.titulo} onChange={(e) => set("titulo", e.target.value)} />
       </Campo>
 
       <Campo id={id("descricao")} rotulo="Contexto">
         <textarea
           id={id("descricao")}
           className="dl-input"
+          maxLength={5000}
           value={proposta.descricao}
           onChange={(e) => set("descricao", e.target.value)}
           placeholder="O que a pessoa precisa saber para fazer (opcional)"
@@ -74,13 +79,14 @@ export function EditorProposta({
         >
           <select id={id("resp")} className="dl-input" value={proposta.responsavelId ?? ""} onChange={(e) => set("responsavelId", e.target.value || null)}>
             <option value="">Escolher depois</option>
-            {usuarios.filter((u) => u.ativo).map((u) => (
+            {pessoas.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.id === usuarioAtual?.id ? `${u.nome} (você)` : u.nome} · {u.funcao}
+                {u.id === euId ? `${u.nome} (você)` : u.nome}
+                {u.funcao ? ` · ${u.funcao}` : ""}
               </option>
             ))}
           </select>
-          {mostrarOrigem && <Evidencia proposta={proposta} campo="responsavel_id" />}
+          <Evidencia proposta={proposta} campo="responsavel_id" />
         </Campo>
 
         <Campo id={id("frente")} rotulo="Frente" estado={!proposta.frenteId ? "pending" : undefined}>
@@ -92,7 +98,7 @@ export function EditorProposta({
               </option>
             ))}
           </select>
-          {mostrarOrigem && <Evidencia proposta={proposta} campo="frente_id" />}
+          <Evidencia proposta={proposta} campo="frente_id" />
         </Campo>
 
         <Campo
@@ -101,7 +107,7 @@ export function EditorProposta({
           estado={!proposta.prazo ? "pending" : undefined}
         >
           <input id={id("prazo")} type="date" className="dl-input" value={proposta.prazo ?? ""} onChange={(e) => set("prazo", e.target.value || null)} />
-          {mostrarOrigem && <Evidencia proposta={proposta} campo="prazo" />}
+          <Evidencia proposta={proposta} campo="prazo" />
         </Campo>
 
         <Campo id={id("prio")} rotulo="Prioridade">
@@ -112,7 +118,7 @@ export function EditorProposta({
               </option>
             ))}
           </select>
-          {mostrarOrigem && <Evidencia proposta={proposta} campo="prioridade" />}
+          <Evidencia proposta={proposta} campo="prioridade" />
         </Campo>
       </div>
 
@@ -130,7 +136,7 @@ export function EditorProposta({
         <p className="text-xs text-ink-muted">
           Também citados:{" "}
           {proposta.envolvidosIds
-            .map((uid) => usuarios.find((u) => u.id === uid)?.nome)
+            .map((uid) => pessoas.find((u) => u.id === uid)?.nome)
             .filter(Boolean)
             .join(", ")}
         </p>
@@ -139,7 +145,7 @@ export function EditorProposta({
   );
 }
 
-export function descreverFaltas(p: Proposta): string[] {
+export function descreverFaltas(p: Pick<Proposta, "responsavelId" | "prazo" | "frenteId">): string[] {
   const faltas: string[] = [];
   if (!p.responsavelId) faltas.push("quem faz");
   if (!p.prazo) faltas.push("prazo");

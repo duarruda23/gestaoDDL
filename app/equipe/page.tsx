@@ -1,95 +1,108 @@
-"use client";
-
-import { useState } from "react";
-import { useGestao } from "@/lib/store";
-import { estaAtiva } from "@/lib/regras";
+import { and, asc, gt, isNull, notInArray, sql } from "drizzle-orm";
+import { obterBanco } from "@/db";
+import { convites, tarefas, usuarios } from "@/db/schema";
+import { exigirConta } from "@/lib/servidor/dal";
+import { podeDelegarAcessos, podeGerenciarAcessos, recusaParaMexerNoAcesso } from "@/lib/servidor/permissoes";
 import { formatarDataHora } from "@/lib/datas";
-import { FormConta } from "@/components/FormConta";
-import { Acessos } from "@/components/Acessos";
-import { Avatar, Botao, TituloPagina, TituloSecao } from "@/components/ui";
+import { FormMeusDados } from "@/components/equipe/FormMeusDados";
+import { FormConvidar } from "@/components/equipe/FormConvidar";
+import { ListaAcessos, type PessoaAcesso, type PessoaSemAcesso } from "@/components/equipe/ListaAcessos";
+import { ListaModelos } from "@/components/equipe/ListaModelos";
+import { listarModelos } from "@/lib/servidor/modelos-nucleo";
 
-export default function Equipe() {
-  const { usuarioAtual, usuarios, frentes, tarefas, resetar } = useGestao();
-  const [criada, setCriada] = useState<string | null>(null);
-  const [confirmandoReset, setConfirmandoReset] = useState(false);
-  if (!usuarioAtual) return null;
+export const metadata = { title: "Equipe · Gestão Donas de Loja" };
 
-  const nome = (id: string | null) => usuarios.find((u) => u.id === id)?.nome ?? "—";
+export default async function Equipe() {
+  const eu = await exigirConta();
+  const banco = obterBanco();
+
+  const [contas, abertasPorPessoa, pendentes, modelos] = await Promise.all([
+    banco.select().from(usuarios).orderBy(asc(usuarios.criadoEm)),
+    banco
+      .select({ id: tarefas.responsavelId, n: sql<number>`count(*)::int` })
+      .from(tarefas)
+      .where(notInArray(tarefas.estado, ["concluida", "arquivada"]))
+      .groupBy(tarefas.responsavelId),
+    banco
+      .select({ nome: convites.nome, email: convites.email, criadoPorId: convites.criadoPorId, expiraEm: convites.expiraEm })
+      .from(convites)
+      .where(and(isNull(convites.usadoEm), gt(convites.expiraEm, new Date())))
+      .orderBy(asc(convites.expiraEm)),
+    listarModelos(banco),
+  ]);
+
+  const nomeDe = (id: string | null) => contas.find((c) => c.id === id)?.nome ?? "—";
+  const abertas = new Map(abertasPorPessoa.map((a) => [a.id, a.n]));
+  const gerencio = podeGerenciarAcessos(eu);
+  const souDono = podeDelegarAcessos(eu);
+
+  const pessoas: PessoaAcesso[] = contas
+    .filter((c) => c.ativo)
+    .sort((a, b) => Number(b.dono) - Number(a.dono))
+    .map((c) => ({
+      id: c.id,
+      nome: c.nome,
+      funcao: c.funcao,
+      email: c.email,
+      whatsapp: c.telefoneWhatsapp,
+      dono: c.dono,
+      gerenciaAcessos: c.gerenciaAcessos,
+      tarefasAbertas: abertas.get(c.id) ?? 0,
+      souEu: c.id === eu.id,
+      podeRemover: recusaParaMexerNoAcesso(eu, c) === null,
+      podeMudarPermissao: souDono && !c.dono,
+    }));
+
+  const semAcesso: PessoaSemAcesso[] = contas
+    .filter((c) => !c.ativo)
+    .map((c) => ({
+      id: c.id,
+      nome: c.nome,
+      removidoPor: nomeDe(c.acessoRemovidoPorId),
+      removidoEm: c.acessoRemovidoEm ? formatarDataHora(c.acessoRemovidoEm.toISOString()) : "—",
+    }));
+
+  const gestores = contas.filter((c) => c.ativo && (c.dono || c.gerenciaAcessos)).map((c) => c.nome);
+  const emailsComConta = new Set(contas.map((c) => c.email.toLowerCase()));
 
   return (
     <div className="flex flex-col gap-8">
-      <TituloPagina
-        chapeu="Equipe"
-        titulo="Contas da equipe"
-        subtitulo="Todo mundo tem a mesma conta: pede, faz, cobra e é cobrado. A única exceção é remover acessos, que fica com o Ítalo e quem ele autorizar."
-      />
+      <header>
+        <p className="dl-eyebrow">Equipe</p>
+        <h1 className="dl-heading">Quem está no sistema</h1>
+        <p className="dl-subheading">
+          Todo mundo tem a mesma conta: pede, faz, cobra e é cobrado. A única exceção é tirar acesso, que fica com o Ítalo e quem ele autorizar.
+        </p>
+      </header>
 
-      <section className="dl-panel !p-0 overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="border-b border-line text-left">
-              <th className="dl-field-label p-3">Pessoa</th>
-              <th className="dl-field-label p-3">O que faz</th>
-              <th className="dl-field-label p-3">Frentes</th>
-              <th className="dl-field-label p-3">WhatsApp</th>
-              <th className="dl-field-label p-3 text-right">Ativas</th>
-              <th className="dl-field-label p-3">Conta criada por</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {usuarios.filter((u) => u.ativo).map((u) => (
-              <tr key={u.id}>
-                <td className="p-3">
-                  <span className="flex items-center gap-2 font-bold">
-                    <Avatar nome={u.nome} /> {u.nome}
-                    {u.id === usuarioAtual.id && <span className="text-xs font-semibold text-ink-subtle">(você)</span>}
-                  </span>
-                </td>
-                <td className="p-3 text-ink-muted">{u.funcao}</td>
-                <td className="p-3 text-ink-muted">{u.frenteIds.map((id) => frentes.find((f) => f.id === id)?.nome).join(", ") || "—"}</td>
-                <td className="p-3 text-ink-muted whitespace-nowrap">
-                  {u.telefone}
-                  {u.cobrancaPausada && <span className="ml-2 text-xs">(pausado)</span>}
-                </td>
-                <td className="p-3 text-right tabular-nums">{tarefas.filter((t) => t.responsavelId === u.id && estaAtiva(t)).length}</td>
-                <td className="p-3 text-xs text-ink-subtle">
-                  {nome(u.criadoPorId)}
-                  {u.criadoEm && ` · ${formatarDataHora(u.criadoEm)}`}
-                </td>
-              </tr>
+      <FormMeusDados nome={eu.nome} funcao={eu.funcao} whatsapp={eu.telefoneWhatsapp} />
+      <FormConvidar podeRedefinir={gerencio} />
+
+      {pendentes.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <p className="dl-eyebrow">Convites esperando a pessoa criar a senha</p>
+          <ul className="flex flex-col gap-2">
+            {pendentes.map((c, i) => (
+              <li key={i} className="dl-panel !p-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span>
+                  <strong>{c.nome}</strong>
+                  <span className="text-ink-muted"> · {c.email}</span>
+                  {c.email && emailsComConta.has(c.email.toLowerCase()) && (
+                    <span className="ml-2 dl-tag dl-tag-media">Nova senha</span>
+                  )}
+                </span>
+                <span className="text-xs text-ink-subtle">
+                  Convite de {nomeDe(c.criadoPorId)} · vence {formatarDataHora(c.expiraEm.toISOString())}
+                </span>
+              </li>
             ))}
-          </tbody>
-        </table>
-      </section>
+          </ul>
+        </section>
+      )}
 
-      <Acessos />
+      <ListaAcessos pessoas={pessoas} semAcesso={semAcesso} gestores={gestores} gerencio={gerencio} souDono={souDono} />
 
-      <section className="dl-panel !p-5 sm:!p-6 max-w-3xl">
-        <p className="dl-eyebrow">Nova conta</p>
-        <h2 className="mt-1 mb-4 text-xl font-extrabold">Cadastrar alguém da equipe</h2>
-        <FormConta onCriada={(u) => setCriada(u.nome)} />
-        {criada && <p className="mt-3 text-sm font-semibold text-success">Conta de {criada} criada. Ela já pode entrar e receber pedidos.</p>}
-      </section>
-
-      <section className="max-w-3xl">
-        <TituloSecao>Dados da demonstração</TituloSecao>
-        <p className="-mt-1 mb-3 text-sm text-ink-muted">As alterações ficam salvas só neste navegador. Restaure antes de uma apresentação.</p>
-        {confirmandoReset ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-danger">Isso apaga tarefas e contas criadas neste navegador.</span>
-            <Botao variant="danger" onClick={() => { resetar(); setConfirmandoReset(false); }}>
-              Restaurar agora
-            </Botao>
-            <Botao variant="ghost" onClick={() => setConfirmandoReset(false)}>
-              Cancelar
-            </Botao>
-          </div>
-        ) : (
-          <Botao variant="secondary" onClick={() => setConfirmandoReset(true)}>
-            Restaurar dados de demonstração
-          </Botao>
-        )}
-      </section>
+      <ListaModelos modelos={modelos} />
     </div>
   );
 }

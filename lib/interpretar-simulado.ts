@@ -1,24 +1,28 @@
-import type { Frente, Usuario } from "./types";
-import type { RespostaIA } from "./interpretacao";
+import type { FrenteIA, PessoaIA, RespostaIA } from "./interpretacao";
 import { diaSemana, somarDias } from "./datas";
 
-// Interpretador por regras, usado quando não há chave da Anthropic ou a IA
-// falha. Não é tão bom quanto o Claude, mas mantém o fluxo de demonstração
-// e produz a mesma estrutura (evidências, inferidos, ambiguidades).
+// Interpretador por regras, usado quando não há IA configurada ou a IA
+// falha. Não é tão bom quanto a IA, mas mantém o fluxo e produz a mesma
+// estrutura (evidências, inferidos, ambiguidades).
 
 function normalizar(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
+// Palavras-chave por frente. A frente é achada pelo nome (sem acento), para
+// funcionar com os IDs reais do banco.
 const PALAVRAS_FRENTE: [string, string[]][] = [
-  ["f-eventos", ["presencial", "evento", "hotel", "sala", "brinde", "credenciamento", "palco"]],
-  ["f-vsl", ["vsl", "aula", "modulo", "formacao"]],
-  ["f-campanhas", ["criativo", "campanha", "anuncio", "trafego", "cpa", "meta ads", "pixel"]],
-  ["f-conteudo", ["video", "reels", "post", "carrossel", "arte", "story", "stories", "thumbnail", "capa", "gravar", "edicao", "depoimento"]],
-  ["f-comercial", ["ligar", "lead", "venda", "follow", "checkout", "grupo vip", "inscrita", "script"]],
-  ["f-suporte", ["aluna", "suporte", "acesso", "duvida"]],
-  ["f-admin", ["nota fiscal", "notas fiscais", "pagamento", "planilha", "contrato", "comiss", "financeiro"]],
+  ["evento", ["presencial", "evento", "hotel", "sala", "brinde", "credenciamento", "palco"]],
+  ["vsl", ["vsl", "aula", "modulo", "formacao"]],
+  ["campanha", ["criativo", "campanha", "anuncio", "trafego", "cpa", "meta ads", "pixel"]],
+  ["conteudo", ["video", "reels", "post", "carrossel", "arte", "story", "stories", "thumbnail", "capa", "gravar", "edicao", "depoimento"]],
+  ["comercial", ["ligar", "lead", "venda", "follow", "checkout", "grupo vip", "inscrita", "script"]],
+  ["suporte", ["aluna", "suporte", "acesso", "duvida"]],
+  ["administrativo", ["nota fiscal", "notas fiscais", "pagamento", "planilha", "contrato", "comiss", "financeiro"]],
 ];
+
+// Cita-se pelo primeiro nome ("pede pra Ana"), não pelo nome completo.
+const primeiro = (u: PessoaIA) => normalizar(u.nome.split(" ")[0]);
 
 const DIAS: [string, number][] = [
   ["domingo", 0], ["segunda", 1], ["terca", 2], ["quarta", 3], ["quinta", 4], ["sexta", 5], ["sabado", 6],
@@ -72,8 +76,9 @@ function separarEntregas(texto: string): string[] {
     .filter((s) => s.length > 8);
 }
 
-function montarTitulo(seg: string, usuarios: Usuario[]): string {
-  const nomes = usuarios.map((u) => u.nome).join("|");
+function montarTitulo(seg: string, usuarios: PessoaIA[]): string {
+  const escapar = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const nomes = [...new Set(usuarios.flatMap((u) => [u.nome, u.nome.split(" ")[0]]))].map(escapar).join("|") || "\\u0000";
   let t = seg
     .replace(/^e\s+/i, "")
     .replace(new RegExp(`^(?:${nomes}),\\s*`, "i"), "")
@@ -89,8 +94,8 @@ function montarTitulo(seg: string, usuarios: Usuario[]): string {
 export function interpretarSimulado(
   texto: string,
   hoje: string,
-  usuarios: Usuario[],
-  frentes: Frente[]
+  usuarios: PessoaIA[],
+  frentes: FrenteIA[]
 ): RespostaIA {
   const segmentos = separarEntregas(texto);
   const blocos = segmentos.length ? segmentos : [texto.trim()];
@@ -102,10 +107,10 @@ export function interpretarSimulado(
       const inferidos: string[] = [];
       const ambiguidades: string[] = [];
 
-      const citados = usuarios.filter((u) => new RegExp(`\\b${normalizar(u.nome)}\\b`).test(n));
+      const citados = usuarios.filter((u) => new RegExp(`\\b${primeiro(u)}\\b`).test(n));
       const pedido = n.match(/\b(?:peca|pede|pedir|avisa|avise|cobra|cobre)\s+(?:a|à|pra|pro|para o|para a|para)\s+(\w+)/);
-      let responsavel: Usuario | null = null;
-      if (pedido) responsavel = citados.find((u) => normalizar(u.nome) === pedido[1]) ?? null;
+      let responsavel: PessoaIA | null = null;
+      if (pedido) responsavel = citados.find((u) => primeiro(u) === pedido[1]) ?? null;
       if (!responsavel && citados.length === 1) responsavel = citados[0];
       if (!responsavel && citados.length > 1) {
         ambiguidades.push(`O pedido cita ${citados.map((u) => u.nome).join(" e ")}. Quem executa?`);
@@ -116,10 +121,11 @@ export function interpretarSimulado(
       }
 
       let frenteId: string | null = null;
-      for (const [id, palavras] of PALAVRAS_FRENTE) {
+      for (const [fragmento, palavras] of PALAVRAS_FRENTE) {
         const achou = palavras.find((p) => n.includes(p));
-        if (achou) {
-          frenteId = id;
+        const frente = frentes.find((f) => normalizar(f.nome).includes(fragmento));
+        if (achou && frente) {
+          frenteId = frente.id;
           evidencias.push({ campo: "frente_id", trecho: achou });
           inferidos.push("frente_id");
           break;

@@ -1,340 +1,199 @@
-"use client";
-
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useState } from "react";
-import { useGestao } from "@/lib/store";
-import type { Estado, EventoTarefa, Prioridade, Tarefa } from "@/lib/types";
-import { ROTULO_ESTADO, ROTULO_PRIORIDADE, ROTULO_REGRA, rotuloTransicao, transicoesPermitidas } from "@/lib/regras";
-import { descreverPrazo, formatarDataHora } from "@/lib/datas";
-import { Avatar, Botao, Campo, EtiquetaEstado, EtiquetaIA, EtiquetaPrazo, EtiquetaPrioridade } from "@/components/ui";
-import { Cobrar } from "@/components/Cobrar";
-import { useAvisos } from "@/components/Avisos";
+import { notFound } from "next/navigation";
+import { obterBanco } from "@/db";
+import { exigirConta } from "@/lib/servidor/dal";
+import { detalharTarefa, listarPessoasEFrentes } from "@/lib/servidor/consultas";
+import { ROTULO_ESTADO, ROTULO_REGRA, estaAtiva } from "@/lib/regras";
+import { formatarData, formatarDataHora } from "@/lib/datas";
+import type { RegraCobranca } from "@/lib/types";
+import { AcoesTarefa } from "@/components/tarefa/AcoesTarefa";
+import { ChecklistEditavel } from "@/components/tarefa/ChecklistEditavel";
+import { Comentar } from "@/components/tarefa/Comentar";
+import { Cobrar } from "@/components/tarefa/Cobrar";
+import { Anexos } from "@/components/tarefa/Anexos";
+import { listarModelos } from "@/lib/servidor/modelos-nucleo";
+import { listarAnexos } from "@/lib/servidor/anexos-nucleo";
+import { Aviso, EtiquetaEstado, EtiquetaIA, EtiquetaPrazo, EtiquetaPrioridade, TituloSecao, Vazio } from "@/components/ui";
 
-function descreverEvento(e: EventoTarefa): string {
-  const estado = (v: string | null) => (v ? ROTULO_ESTADO[v.split(" ")[0] as Estado] ?? v : "");
-  switch (e.tipo) {
-    case "criada":
-    case "confirmada_ia":
-    case "checklist":
-    case "cobranca":
-    case "acesso":
-      return e.depois ?? "";
-    case "estado": {
-      const [para, ...resto] = (e.depois ?? "").split(" — ");
-      return `Mudou de ${estado(e.antes)} para ${estado(para)}${resto.length ? ` (${resto.join(" — ")})` : ""}`;
-    }
-    case "responsavel":
-      return `Quem faz: ${e.antes} → ${e.depois}`;
-    case "prazo":
-      return `Prazo: ${descreverPrazo(e.antes)} → ${descreverPrazo(e.depois)}`;
-    case "prioridade":
-      return e.antes
-        ? `Prioridade: ${ROTULO_PRIORIDADE[e.antes as Prioridade]} → ${ROTULO_PRIORIDADE[e.depois as Prioridade]}`
-        : `Prioridade ${e.depois}`;
-    case "comentario":
-      return `Comentou: "${e.depois}"`;
-  }
+const ROTULO_EVENTO: Record<string, string> = {
+  criada: "Pediu",
+  confirmada_ia: "Confirmou o pedido da IA",
+  estado: "Mudou a etapa",
+  responsavel: "Mudou o responsável",
+  prazo: "Mudou o prazo",
+  prioridade: "Mudou a prioridade",
+  comentario: "Comentou",
+  checklist: "Mexeu no checklist",
+  cobranca: "Cobrou",
+  acesso: "Acesso",
+  anexo: "Anexos",
+};
+
+const ROTULO_ENVIO: Record<string, string> = {
+  pendente: "na fila",
+  enviando: "enviando",
+  enviado: "enviada",
+  falhou: "falhou",
+  ignorado: "ignorada",
+};
+
+// Etapa é gravada como "estado" ou "estado — detalhe" (motivo do bloqueio,
+// desfez o arquivamento); mostra o nome da etapa e mantém o detalhe.
+function rotuloEtapa(v: string): string {
+  const [etapa, ...resto] = v.split(" — ");
+  const nome = etapa in ROTULO_ESTADO ? ROTULO_ESTADO[etapa as keyof typeof ROTULO_ESTADO] : etapa;
+  return resto.length ? `${nome} (${resto.join(" — ")})` : nome;
 }
 
-function PainelEdicao({ tarefa }: { tarefa: Tarefa }) {
-  const { usuarios, editarTarefa, simularEdicaoExterna } = useGestao();
-  // Versão carregada quando a edição começou: base da checagem de conflito.
-  const [versao, setVersao] = useState(tarefa.versao);
-  const [resp, setResp] = useState(tarefa.responsavelId ?? "");
-  const [prazo, setPrazo] = useState(tarefa.prazo ?? "");
-  const [prio, setPrio] = useState<Prioridade>(tarefa.prioridade);
-  const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null);
+function descreverMudanca(tipo: string, antes: string | null, depois: string | null): string | null {
+  const rotulo = (v: string | null) =>
+    v == null ? "—" : tipo === "estado" ? rotuloEtapa(v) : tipo === "prazo" ? formatarData(v) : v;
+  if (antes == null && depois == null) return null;
+  if (antes == null) return rotulo(depois);
+  return `${rotulo(antes)} → ${rotulo(depois)}`;
+}
 
-  function salvar() {
-    const r = editarTarefa(tarefa.id, versao, { responsavelId: resp || null, prazo: prazo || null, prioridade: prio });
-    if (r.ok) {
-      setVersao(versao + 1);
-      setMsg({ ok: true, texto: "Salvo." });
-    } else setMsg({ ok: false, texto: r.motivo });
-  }
-
-  function recarregar() {
-    setVersao(tarefa.versao);
-    setResp(tarefa.responsavelId ?? "");
-    setPrazo(tarefa.prazo ?? "");
-    setPrio(tarefa.prioridade);
-    setMsg(null);
-  }
+// Detalhe da tarefa. Modelo horizontal: qualquer conta muda etapa, edita,
+// comenta e mexe no checklist. Cobrar vai para a fila do WhatsApp.
+export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]">) {
+  const conta = await exigirConta();
+  const { id } = await params;
+  const banco = obterBanco();
+  const t = await detalharTarefa(banco, id);
+  if (!t) notFound();
+  const [{ pessoas, frentes }, modelos, anexos] = await Promise.all([listarPessoasEFrentes(banco), listarModelos(banco), listarAnexos(banco, t.id)]);
+  const arquivada = t.estado === "arquivada";
+  // Modelo horizontal: qualquer um cobra quem faz, desde que não seja a própria pessoa.
+  const podeCobrar = !!t.responsavel && t.responsavel.id !== conta.id && estaAtiva(t);
+  const ultimaCobranca = t.mensagens.find((m) => m.regra === "cobranca_manual");
 
   return (
-    <div className="dl-panel flex flex-col gap-4">
-      <p className="dl-eyebrow">Editar</p>
-      <Campo id="ed-resp" rotulo="Quem faz">
-        <select id="ed-resp" className="dl-input" value={resp} onChange={(e) => setResp(e.target.value)}>
-          <option value="">Sem responsável</option>
-          {usuarios.filter((u) => u.ativo || u.id === tarefa.responsavelId).map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.nome}
-            </option>
-          ))}
-        </select>
-      </Campo>
-      <Campo id="ed-prazo" rotulo="Prazo">
-        <input id="ed-prazo" type="date" className="dl-input" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
-      </Campo>
-      <Campo id="ed-prio" rotulo="Prioridade">
-        <select id="ed-prio" className="dl-input" value={prio} onChange={(e) => setPrio(e.target.value as Prioridade)}>
-          {(Object.keys(ROTULO_PRIORIDADE) as Prioridade[]).map((p) => (
-            <option key={p} value={p}>
-              {ROTULO_PRIORIDADE[p]}
-            </option>
-          ))}
-        </select>
-      </Campo>
-      <div className="flex flex-wrap gap-2">
-        <Botao variant="primary" onClick={salvar}>
-          Salvar
-        </Botao>
-        {msg && !msg.ok && (
-          <Botao variant="secondary" onClick={recarregar}>
-            Recarregar dados
-          </Botao>
-        )}
-      </div>
-      {msg && <p className={`text-xs font-semibold ${msg.ok ? "text-success" : "text-danger"}`}>{msg.texto}</p>}
-      <button
-        className="self-start text-[11px] text-ink-subtle underline"
-        onClick={() => simularEdicaoExterna(tarefa.id)}
-        title="Para testar duas pessoas editando a mesma tarefa"
-      >
-        Demo: simular outra pessoa editando agora
-      </button>
-    </div>
-  );
-}
-
-export default function DetalheTarefa() {
-  const { id } = useParams<{ id: string }>();
-  const { usuarioAtual, tarefas, usuarios, frentes, eventos, mensagens, mudarEstado, comentar, alternarChecklist, arquivar, desarquivar } = useGestao();
-  const { avisar } = useAvisos();
-  const [motivo, setMotivo] = useState("");
-  const [pedindoMotivo, setPedindoMotivo] = useState(false);
-  const [comentario, setComentario] = useState("");
-  const [erro, setErro] = useState<string | null>(null);
-
-  const tarefa = tarefas.find((t) => t.id === id);
-  if (!tarefa) {
-    return (
-      <div className="dl-panel text-center">
-        <p className="font-bold">Tarefa não encontrada</p>
-        <Link href="/quadro" className="dl-link mt-2 inline-block text-sm">
-          Voltar ao quadro
+    <div className="flex flex-col gap-6">
+      <div>
+        <Link href="/quadro" className="text-sm font-semibold text-ink-muted hover:text-ink">
+          ← Quadro
         </Link>
       </div>
-    );
-  }
 
-  const nome = (uid: string | null) => usuarios.find((u) => u.id === uid)?.nome ?? "—";
-  const frente = frentes.find((f) => f.id === tarefa.frenteId);
-  const transicoes = transicoesPermitidas(tarefa, frente);
-  const historico = eventos.filter((e) => e.tarefaId === tarefa.id);
-  const msgs = mensagens.filter((m) => m.tarefaId === tarefa.id);
-  const ehMinha = tarefa.responsavelId === usuarioAtual?.id;
+      <header className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <EtiquetaEstado estado={t.estado} />
+          <EtiquetaPrioridade prioridade={t.prioridade} />
+          {t.origem === "ia" && <EtiquetaIA />}
+        </div>
+        <h1 className="dl-heading">{t.titulo}</h1>
+        {t.descricao && <p className="max-w-2xl whitespace-pre-wrap text-ink-muted">{t.descricao}</p>}
+      </header>
 
-  function transicionar(para: Estado) {
-    if (para === "bloqueada" && !pedindoMotivo) {
-      setPedindoMotivo(true);
-      return;
-    }
-    const r = mudarEstado(tarefa!.id, para, para === "bloqueada" ? motivo : undefined);
-    if (r.ok) {
-      setPedindoMotivo(false);
-      setMotivo("");
-      setErro(null);
-    } else setErro(r.motivo);
-  }
+      {podeCobrar && <Cobrar tarefaId={t.id} responsavel={t.responsavel!.nome} ultimaPor={ultimaCobranca?.autor ?? null} />}
 
-  function enviarComentario() {
-    if (!comentario.trim()) return;
-    comentar(tarefa!.id, comentario.trim());
-    setComentario("");
-  }
+      <AcoesTarefa key={t.versao} tarefa={t} pessoas={pessoas} frentes={frentes} />
 
-  return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <div className="flex flex-col gap-6 min-w-0">
+      {t.estado === "bloqueada" && t.motivoBloqueio && (
+        <Aviso tom="warning" titulo="Bloqueada">
+          {t.motivoBloqueio}
+        </Aviso>
+      )}
+
+      <dl className="dl-panel grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
         <div>
-          <Link href="/quadro" className="text-sm font-semibold text-ink-muted hover:text-ink">
-            ← Quadro
-          </Link>
-          <p className="dl-eyebrow mt-3">{frente?.nome ?? "Sem frente"}</p>
-          <h1 className="dl-heading">{tarefa.titulo}</h1>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <EtiquetaEstado estado={tarefa.estado} />
-            <EtiquetaPrioridade prioridade={tarefa.prioridade} />
-            <EtiquetaPrazo tarefa={tarefa} />
-            {tarefa.origem === "ia" && <EtiquetaIA />}
-          </div>
+          <dt className="text-xs text-ink-muted">Quem faz</dt>
+          <dd className="font-bold">{t.responsavel?.nome ?? "Ninguém ainda"}</dd>
         </div>
-
-        <dl className="dl-panel grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
-          <div>
-            <dt className="dl-field-label">Quem faz</dt>
-            <dd className="mt-1 flex items-center gap-2 font-semibold">
-              <Avatar nome={tarefa.responsavelId ? nome(tarefa.responsavelId) : null} />
-              {tarefa.responsavelId ? nome(tarefa.responsavelId) : "Ninguém"}
-              {ehMinha && <span className="text-xs text-ink-subtle">(você)</span>}
-            </dd>
-          </div>
-          <div>
-            <dt className="dl-field-label">Quem pediu</dt>
-            <dd className="mt-1 font-semibold">
-              {nome(tarefa.criadorId)}
-              {tarefa.criadorId === usuarioAtual?.id && <span className="text-xs text-ink-subtle"> (você)</span>}
-            </dd>
-          </div>
-          <div>
-            <dt className="dl-field-label">Prazo</dt>
-            <dd className="mt-1 font-semibold">{descreverPrazo(tarefa.prazo)}</dd>
-          </div>
-          <div>
-            <dt className="dl-field-label">Envolvidos</dt>
-            <dd className="mt-1 font-semibold">{tarefa.envolvidosIds.map(nome).join(", ") || "—"}</dd>
-          </div>
-        </dl>
-
-        {tarefa.estado === "bloqueada" && tarefa.motivoBloqueio && (
-          <div className="dl-callout dl-callout-danger">
-            <p className="dl-callout-title">Bloqueada</p>
-            {tarefa.motivoBloqueio}
+        <div>
+          <dt className="text-xs text-ink-muted">Quem pediu</dt>
+          <dd className="font-bold">{t.criador.nome}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-ink-muted">Prazo</dt>
+          <dd className="font-bold">
+            <EtiquetaPrazo tarefa={t} />
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-ink-muted">Frente</dt>
+          <dd className="font-bold">{t.frente?.nome ?? "Sem frente"}</dd>
+        </div>
+        {t.envolvidos.length > 0 && (
+          <div className="col-span-2 md:col-span-4">
+            <dt className="text-xs text-ink-muted">Envolvidos</dt>
+            <dd className="font-bold">{t.envolvidos.map((p) => p.nome).join(", ")}</dd>
           </div>
         )}
+      </dl>
 
-        {!ehMinha && <Cobrar tarefa={tarefa} />}
+      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="flex flex-col gap-6">
+          <section>
+            <TituloSecao>
+              Checklist {t.checklistTotal > 0 && <span className="text-ink-muted">({t.checklistFeitos}/{t.checklistTotal})</span>}
+            </TituloSecao>
+            <ChecklistEditavel tarefaId={t.id} itens={t.checklist} arquivada={arquivada} modelos={modelos.map(({ id, nome }) => ({ id, nome }))} />
+          </section>
 
-        {tarefa.estado !== "arquivada" && (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap gap-2">
-              {transicoes.map((para) => (
-                <Botao
-                  key={para}
-                  onClick={() => transicionar(para)}
-                  variant={
-                    para === "concluida" || (tarefa.estado === "triagem" && para === "a_fazer")
-                      ? "primary"
-                      : para === "bloqueada"
-                        ? "danger"
-                        : "secondary"
-                  }
-                >
-                  {rotuloTransicao(tarefa.estado, para)}
-                </Botao>
-              ))}
-              <Botao
-                variant="ghost"
-                onClick={() => {
-                  const id = tarefa.id;
-                  arquivar(id);
-                  avisar("Tarefa arquivada.", () => desarquivar(id));
-                }}
-              >
-                Arquivar
-              </Botao>
-            </div>
-            {pedindoMotivo && (
-              <div className="dl-surgir flex flex-col gap-2 sm:flex-row">
-                <input className="dl-input" placeholder="O que está travando? (obrigatório)" aria-label="Motivo do bloqueio" value={motivo} onChange={(e) => setMotivo(e.target.value)} autoFocus />
-                <Botao variant="danger" onClick={() => transicionar("bloqueada")}>
-                  Confirmar bloqueio
-                </Botao>
-              </div>
+          <section>
+            <TituloSecao>Anexos {anexos.length > 0 && <span className="text-ink-muted">({anexos.length})</span>}</TituloSecao>
+            <Anexos tarefaId={t.id} anexos={anexos} arquivada={arquivada} />
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <TituloSecao>Comentários</TituloSecao>
+            {t.comentarios.length ? (
+              <ul className="flex flex-col gap-3">
+                {t.comentarios.map((c) => (
+                  <li key={c.id} className="dl-panel text-sm">
+                    <p className="mb-1 text-xs text-ink-muted">
+                      <span className="font-bold text-ink">{c.autor}</span> · {formatarDataHora(c.criadoEm)}
+                    </p>
+                    <p className="whitespace-pre-wrap">{c.texto}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Vazio>Ninguém comentou ainda.</Vazio>
             )}
-            {erro && <p className="text-sm font-semibold text-danger">{erro}</p>}
-          </div>
-        )}
-
-        {tarefa.descricao && (
-          <section>
-            <p className="dl-eyebrow mb-2">Contexto</p>
-            <p className="text-[15px] leading-[22px] whitespace-pre-wrap text-ink-muted">{tarefa.descricao}</p>
+            {!arquivada && <Comentar tarefaId={t.id} />}
           </section>
-        )}
+        </div>
 
-        {tarefa.checklist.length > 0 && (
+        <aside className="flex flex-col gap-6">
           <section>
-            <p className="dl-eyebrow mb-2">Checklist</p>
-            <ul className="flex flex-col gap-2">
-              {tarefa.checklist.map((c) => (
-                <li key={c.id}>
-                  <label className="flex items-center gap-2 text-[15px]">
-                    <input type="checkbox" className="h-4 w-4 accent-[var(--brand)]" checked={c.concluido} onChange={() => alternarChecklist(tarefa.id, c.id)} />
-                    <span className={c.concluido ? "line-through text-ink-subtle" : ""}>{c.texto}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
+            <TituloSecao>Histórico</TituloSecao>
+            {t.eventos.length ? (
+              <ol className="dl-panel flex flex-col gap-3 text-sm">
+                {t.eventos.map((e) => {
+                  const mudanca = descreverMudanca(e.tipo, e.antes, e.depois);
+                  return (
+                    <li key={e.id}>
+                      <p>
+                        <span className="font-bold">{e.ator}</span> · {ROTULO_EVENTO[e.tipo] ?? e.tipo}
+                      </p>
+                      {mudanca && <p className="text-ink-muted">{mudanca}</p>}
+                      <p className="text-xs text-ink-subtle">{formatarDataHora(e.criadoEm)}</p>
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <Vazio>Sem histórico.</Vazio>
+            )}
           </section>
-        )}
 
-        <section>
-          <p className="dl-eyebrow mb-2">Comentários</p>
-          <div className="flex flex-col gap-2">
-            {tarefa.comentarios.map((c) => (
-              <div key={c.id} className="dl-panel !p-3 text-sm">
-                <p className="text-xs text-ink-subtle">
-                  <strong className="text-ink">{nome(c.autorId)}</strong> · {formatarDataHora(c.criadoEm)}
-                </p>
-                <p className="mt-1">{c.texto}</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-            <input
-              className="dl-input"
-              placeholder="Escreva um comentário"
-              aria-label="Comentário"
-              value={comentario}
-              onChange={(e) => setComentario(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && enviarComentario()}
-            />
-            <Botao variant="secondary" disabled={!comentario.trim()} onClick={enviarComentario}>
-              Comentar
-            </Botao>
-          </div>
-        </section>
-      </div>
-
-      <aside className="flex flex-col gap-4">
-        {tarefa.estado !== "arquivada" && <PainelEdicao key={tarefa.id} tarefa={tarefa} />}
-
-        <div className="dl-panel">
-          <p className="dl-eyebrow mb-3">WhatsApp</p>
-          {msgs.length ? (
-            <ul className="flex flex-col gap-2">
-              {msgs.map((m) => (
-                <li key={m.id} className="text-xs">
-                  <span className="font-bold">{m.regra === "cobranca_manual" ? `${nome(m.autorId)} cobrou` : ROTULO_REGRA[m.regra]}</span> → {nome(m.destinatarioId)} ·{" "}
-                  <span className={m.status === "falhou" ? "text-danger font-semibold" : m.status === "enviado" ? "text-success font-semibold" : "text-ink-subtle"}>
-                    {m.status}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs text-ink-subtle">Nenhuma mensagem para esta tarefa.</p>
+          {t.mensagens.length > 0 && (
+            <section>
+              <TituloSecao>Mensagens</TituloSecao>
+              <ul className="dl-panel flex flex-col gap-2 text-sm">
+                {t.mensagens.map((m) => (
+                  <li key={m.id}>
+                    {ROTULO_REGRA[m.regra as RegraCobranca] ?? m.regra} para {m.destinatario}
+                    {m.autor ? ` (de ${m.autor})` : ""} · <span className="text-ink-muted">{ROTULO_ENVIO[m.status] ?? m.status}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
-        </div>
-
-        <div className="dl-panel">
-          <p className="dl-eyebrow mb-3">Histórico</p>
-          <ol className="flex flex-col gap-3">
-            {historico.map((e) => (
-              <li key={e.id} className="text-xs">
-                <p>{descreverEvento(e)}</p>
-                <p className="text-ink-subtle">
-                  {nome(e.atorId)} · {formatarDataHora(e.criadoEm)}
-                </p>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </aside>
+        </aside>
+      </div>
     </div>
   );
 }

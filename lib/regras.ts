@@ -4,7 +4,6 @@ import type {
   Prioridade,
   RegraCobranca,
   Tarefa,
-  Usuario,
 } from "./types";
 import { diferencaDias, hojeISO } from "./datas";
 
@@ -52,7 +51,10 @@ export const ORDEM_PRIORIDADE: Record<Prioridade, number> = {
 
 // ---- Máquina de estados (seção 4 do spec) ----
 
-export function transicoesPermitidas(t: Tarefa, frente: Frente | undefined): Estado[] {
+export function transicoesPermitidas(
+  t: Pick<Tarefa, "estado" | "estadoAnterior">,
+  frente: Pick<Frente, "usaRevisao"> | undefined | null
+): Estado[] {
   const usaRevisao = frente?.usaRevisao ?? false;
   switch (t.estado) {
     case "triagem":
@@ -90,7 +92,7 @@ export function rotuloTransicao(de: Estado, para: Estado): string {
 }
 
 // Uma tarefa só sai da triagem com dono e prazo (seção 4, passo 3).
-export function pendenciasParaLiberar(t: Tarefa): string[] {
+export function pendenciasParaLiberar(t: Pick<Tarefa, "responsavelId" | "prazo" | "frenteId">): string[] {
   const faltas: string[] = [];
   if (!t.responsavelId) faltas.push("responsável");
   if (!t.prazo) faltas.push("prazo");
@@ -99,46 +101,30 @@ export function pendenciasParaLiberar(t: Tarefa): string[] {
 }
 
 // ---- Permissões ----
-// Modelo horizontal (decisão de 24/09): toda conta pode ver, pedir, atribuir,
-// editar, mudar etapa e cobrar qualquer tarefa, de qualquer pessoa — o Ítalo
-// incluído. O que separa as pessoas é o histórico (quem pediu, quem cobrou),
-// não o poder.
-//
-// Exceção única: acesso. Remover (e restaurar) o acesso de alguém é só do
-// dono — o Ítalo — e de quem ele autorizar. Ninguém remove o acesso do dono
-// nem tira a permissão dele, e só o dono dá ou tira essa permissão.
-
-export const DONO_ID = "u-italo";
-
-export function ehDono(u: Usuario | null | undefined): boolean {
-  return u?.id === DONO_ID;
-}
-
-export function podeGerenciarAcessos(u: Usuario | null | undefined): boolean {
-  return Boolean(u && u.ativo && (ehDono(u) || u.gerenciaAcessos));
-}
-
-export function podeDelegarAcessos(u: Usuario | null | undefined): boolean {
-  return ehDono(u) && Boolean(u?.ativo);
-}
+// Modelo horizontal: toda conta vê, pede, edita, muda etapa e cobra qualquer
+// tarefa. A única exceção (acesso) fica em lib/servidor/permissoes.ts.
 
 // ---- Situação de prazo ----
 
-export function estaAtiva(t: Tarefa): boolean {
+// As funções de prazo e etapa pedem só os campos que usam: servem tanto para
+// as linhas do banco quanto para as visões das telas.
+type ComPrazo = Pick<Tarefa, "estado" | "prazo">;
+
+export function estaAtiva(t: Pick<Tarefa, "estado">): boolean {
   return t.estado !== "concluida" && t.estado !== "arquivada";
 }
 
-export function estaVencida(t: Tarefa, hoje = hojeISO()): boolean {
+export function estaVencida(t: ComPrazo, hoje = hojeISO()): boolean {
   return estaAtiva(t) && t.prazo !== null && diferencaDias(hoje, t.prazo) < 0;
 }
 
-export function venceEmBreve(t: Tarefa, hoje = hojeISO()): boolean {
+export function venceEmBreve(t: ComPrazo, hoje = hojeISO()): boolean {
   if (!estaAtiva(t) || !t.prazo) return false;
   const dif = diferencaDias(hoje, t.prazo);
   return dif >= 0 && dif <= 1;
 }
 
-export function ordenarPorUrgencia(a: Tarefa, b: Tarefa): number {
+export function ordenarPorUrgencia(a: Pick<Tarefa, "prazo" | "prioridade">, b: Pick<Tarefa, "prazo" | "prioridade">): number {
   const pa = a.prazo ?? "9999-12-31";
   const pb = b.prazo ?? "9999-12-31";
   if (pa !== pb) return pa < pb ? -1 : 1;

@@ -7,7 +7,7 @@ on:
 
 jobs:
   app:
-    name: App (tipos, lint, build)
+    name: App (tipos, lint, testes, build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +19,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
+      - name: Testes (Postgres em memória com PGlite)
+        run: pnpm test
       - run: pnpm build
 
   banco:
@@ -53,3 +55,24 @@ jobs:
         run: pnpm db:migrate
       - name: Testar regras do banco
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/teste-regras.sql
+      - name: Operação do dono (rodar duas vezes não duplica)
+        env:
+          MIGRACAO_DATABASE_URL: ${{ env.DATABASE_URL }}
+          SITE_URL: https://exemplo.test
+          DONO_NOME: Ítalo
+          DONO_EMAIL: italo@exemplo.test
+          DONO_WHATSAPP: "+55 82 90000-0001"
+          CONVIDADO_NOME: Eduardo
+          CONVIDADO_EMAIL: eduardo@exemplo.test
+        run: |
+          mascarar() { sed -E 's#/convite/[A-Za-z0-9_-]+#/convite/<token>#g'; }
+          saida1=$(node db/operacao-dono.mjs 2>&1) || { echo "$saida1" | mascarar; exit 1; }
+          echo "$saida1" | mascarar
+          echo "$saida1" | grep -q "Link de convite para eduardo@exemplo.test"
+          saida2=$(node db/operacao-dono.mjs 2>&1) || { echo "$saida2" | mascarar; exit 1; }
+          echo "$saida2" | mascarar
+          echo "$saida2" | grep -q "Dono já existia"
+          test "$(psql "$DATABASE_URL" -tAc 'select count(*) from usuarios where dono')" = "1"
+          test "$(psql "$DATABASE_URL" -tAc 'select count(*) from frentes')" = "7"
+          test "$(psql "$DATABASE_URL" -tAc 'select count(*) from convites')" = "4"
+          echo "ok: um dono, 7 frentes, 4 convites (2 do dono + 2 do convidado)"
