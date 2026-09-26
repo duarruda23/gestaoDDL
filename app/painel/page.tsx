@@ -1,6 +1,7 @@
 import { obterBanco } from "@/db";
 import { exigirConta } from "@/lib/servidor/dal";
 import { montarPainel } from "@/lib/servidor/consultas";
+import { resumoAuditoria } from "@/lib/servidor/pedidos-nucleo";
 import type { TarefaVisao } from "@/lib/visao";
 import { CartaoTarefa, Contador, TituloPagina, TituloSecao, Vazio } from "@/components/ui";
 
@@ -20,7 +21,8 @@ function Lista({ tarefas, vazio }: { tarefas: TarefaVisao[]; vazio: string }) {
 // Painel: a visão da operação inteira. Todo mundo vê (modelo horizontal).
 export default async function Painel() {
   await exigirConta();
-  const p = await montarPainel(obterBanco());
+  const banco = obterBanco();
+  const [p, ia] = await Promise.all([montarPainel(banco), resumoAuditoria(banco)]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -63,6 +65,23 @@ export default async function Painel() {
           </table>
         </div>
       </section>
+
+      {ia.propostas > 0 && (
+        <section>
+          <TituloSecao>Pedidos pela IA (30 dias)</TituloSecao>
+          <div className="dl-panel text-sm">
+            <p>
+              <strong>{ia.propostas}</strong> propostas: {ia.confirmadas} viraram tarefa, {ia.descartadas} descartadas, {ia.abertas} esperando revisão.
+            </p>
+            {ia.confirmadas > 0 && (
+              <p className="mt-1 text-ink-muted">
+                {Math.round((ia.aceitasComoVieram / ia.confirmadas) * 100)}% confirmadas sem mudar quem faz, prazo e frente
+                {ia.porRegras > 0 ? ` · ${ia.porRegras} interpretadas por regras (IA indisponível)` : ""}.
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       <section>
         <TituloSecao tom="danger">Vencidas</TituloSecao>

@@ -1,11 +1,15 @@
 import { z } from "zod";
 import type { Frente, Proposta, Usuario } from "./types";
+
+// Só o que a IA precisa saber de cada pessoa e frente (vem do banco).
+export type PessoaIA = Pick<Usuario, "id" | "nome" | "funcao" | "frenteIds">;
+export type FrenteIA = Pick<Frente, "id" | "nome" | "liderId">;
 import { diaSemana, diferencaDias } from "./datas";
 
 // Contrato da saída da IA (seção 6 do spec). A mesma validação roda para a
 // resposta do Claude e para o interpretador simulado.
 
-export const VERSAO_PROMPT = "intake-v2-2026-09-24";
+export const VERSAO_PROMPT = "intake-v3-2026-09-25";
 
 export const PropostaSchema = z.object({
   titulo: z.string().describe("Título curto no infinitivo, em português"),
@@ -31,9 +35,9 @@ export const RespostaSchema = z.object({
 
 export type RespostaIA = z.infer<typeof RespostaSchema>;
 
-export function montarSystemPrompt(hoje: string, usuarios: Usuario[], frentes: Frente[], autor: Usuario | null): string {
+export function montarSystemPrompt(hoje: string, usuarios: PessoaIA[], frentes: FrenteIA[], autor: PessoaIA | null): string {
   const pessoas = usuarios
-    .map((u) => `- ${u.id}: ${u.nome} — ${u.funcao} (frentes: ${u.frenteIds.join(", ") || "todas/gestão"})`)
+    .map((u) => `- ${u.id}: ${u.nome}${u.funcao ? ` — ${u.funcao}` : ""} (frentes: ${u.frenteIds.join(", ") || "não definidas"})`)
     .join("\n");
   const listaFrentes = frentes
     .map((f) => `- ${f.id}: ${f.nome} (pessoa de referência: ${f.liderId ?? "nenhuma"})`)
@@ -67,8 +71,8 @@ Como montar as propostas:
 export function validarPropostas(
   resposta: RespostaIA,
   hoje: string,
-  usuarios: Usuario[],
-  frentes: Frente[]
+  usuarios: Pick<PessoaIA, "id">[],
+  frentes: Pick<FrenteIA, "id">[]
 ): Proposta[] {
   const idsUsuarios = new Set(usuarios.map((u) => u.id));
   const idsFrentes = new Set(frentes.map((f) => f.id));

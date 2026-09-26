@@ -1,6 +1,6 @@
-import { and, eq, max } from "drizzle-orm";
+import { and, eq, inArray, max } from "drizzle-orm";
 import type { Banco } from "@/db";
-import { checklistItens, comentarios, eventosTarefa, frentes, tarefas, usuarios } from "@/db/schema";
+import { checklistItens, comentarios, eventosTarefa, frentes, tarefaEnvolvidos, tarefas, usuarios } from "@/db/schema";
 import type { Estado, Prioridade } from "@/lib/types";
 import { pendenciasParaLiberar, transicoesPermitidas } from "@/lib/regras";
 import { CONFLITO } from "@/lib/conflito";
@@ -18,7 +18,7 @@ import { enfileirar, primeiroNome } from "./fila";
 
 export type Resultado<T = object> = ({ ok: true } & T) | { ok: false; motivo: string };
 type Ator = { id: string };
-type Tx = Parameters<Parameters<Banco["transaction"]>[0]>[0];
+export type Tx = Parameters<Parameters<Banco["transaction"]>[0]>[0];
 
 export { CONFLITO };
 const FORMATO_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -122,46 +122,74 @@ async function travar(tx: Tx, id: string) {
 
 // ---- Criar ----
 
-export async function criarTarefa(
-  banco: Banco,
+export interface OpcoesCriacao {
+  origem?: "manual" | "ia";
+  pedidoId?: string | null; // pedido em texto livre que originou (bloco B)
+  envolvidosIds?: string[]; // outras pessoas citadas no pedido
+}
+
+// Versão que roda dentro de uma transação já aberta: a confirmação da
+// proposta da IA cria a tarefa e marca a proposta na mesma transação.
+export async function criarTarefaTx(
+  tx: Tx,
   ator: Ator,
-  dados: DadosTarefa & { itens?: string[] }
+  dados: DadosTarefa & { itens?: string[] },
+  opcoes: OpcoesCriacao = {}
 ): Promise<Resultado<{ id: string; estado: Estado }>> {
-  const v = await validarCampos(banco, dados);
+  const v = await validarCampos(tx, dados);
   if (!v.ok) return v;
   const itens = (dados.itens ?? []).map((x) => x.trim()).filter(Boolean);
   if (itens.length > LIMITES.itensNaCriacao) return { ok: false, motivo: `O checklist pode começar com até ${LIMITES.itensNaCriacao} itens.` };
   if (itens.some((x) => x.length > LIMITES.item)) return { ok: false, motivo: `Cada item do checklist pode ter até ${LIMITES.item} caracteres.` };
 
+  // Só quem está ativo pode ser citado; o responsável não se repete.
+  let envolvidos = [...new Set(opcoes.envolvidosIds ?? [])].filter((id) => FORMATO_UUID.test(id) && id !== dados.responsavelId).slice(0, 20);
+  if (envolvidos.length) {
+    const ativos = await tx.select({ id: usuarios.id }).from(usuarios).where(and(inArray(usuarios.id, envolvidos), eq(usuarios.ativo, true)));
+    const ok = new Set(ativos.map((a) => a.id));
+    envolvidos = envolvidos.filter((id) => ok.has(id));
+  }
+
   // Com responsável, prazo e frente, já nasce liberada; senão, vai pra triagem.
   const estado: Estado = pendenciasParaLiberar(dados).length === 0 ? "a_fazer" : "triagem";
+  const origem = opcoes.origem ?? "manual";
 
-  const id = await banco.transaction(async (tx) => {
-    const [t] = await tx
-      .insert(tarefas)
-      .values({
-        titulo: dados.titulo.trim(),
-        descricao: dados.descricao.trim(),
-        responsavelId: dados.responsavelId,
-        prazo: dados.prazo,
-        frenteId: dados.frenteId,
-        prioridade: dados.prioridade,
-        criadorId: ator.id,
-        estado,
-      })
-      .returning({ id: tarefas.id });
-    if (itens.length) await tx.insert(checklistItens).values(itens.map((texto, i) => ({ tarefaId: t.id, texto, ordem: i + 1 })));
-    await tx.insert(eventosTarefa).values({
-      tarefaId: t.id,
-      tipo: "criada",
-      atorId: ator.id,
-      depois: estado === "triagem" ? "Pedida manualmente (foi pra triagem)" : "Pedida manualmente",
-    });
-    if (estado === "a_fazer")
-      await avisarAtribuicao(tx, { id: t.id, titulo: dados.titulo.trim(), prazo: dados.prazo, criadorId: ator.id }, dados.responsavelId!, ator.id);
-    return t.id;
+  const [t] = await tx
+    .insert(tarefas)
+    .values({
+      titulo: dados.titulo.trim(),
+      descricao: dados.descricao.trim(),
+      responsavelId: dados.responsavelId,
+      prazo: dados.prazo,
+      frenteId: dados.frenteId,
+      prioridade: dados.prioridade,
+      criadorId: ator.id,
+      estado,
+      origem,
+      pedidoId: opcoes.pedidoId ?? null,
+    })
+    .returning({ id: tarefas.id });
+  if (itens.length) await tx.insert(checklistItens).values(itens.map((texto, i) => ({ tarefaId: t.id, texto, ordem: i + 1 })));
+  if (envolvidos.length) await tx.insert(tarefaEnvolvidos).values(envolvidos.map((usuarioId) => ({ tarefaId: t.id, usuarioId })));
+  const como = origem === "ia" ? "Pedida em texto livre, interpretada pela IA e revisada" : "Pedida manualmente";
+  await tx.insert(eventosTarefa).values({
+    tarefaId: t.id,
+    tipo: origem === "ia" ? "confirmada_ia" : "criada",
+    atorId: ator.id,
+    depois: estado === "triagem" ? `${como} (foi pra triagem)` : como,
   });
-  return { ok: true, id, estado };
+  if (estado === "a_fazer")
+    await avisarAtribuicao(tx, { id: t.id, titulo: dados.titulo.trim(), prazo: dados.prazo, criadorId: ator.id }, dados.responsavelId!, ator.id);
+  return { ok: true, id: t.id, estado };
+}
+
+export async function criarTarefa(
+  banco: Banco,
+  ator: Ator,
+  dados: DadosTarefa & { itens?: string[] },
+  opcoes: OpcoesCriacao = {}
+): Promise<Resultado<{ id: string; estado: Estado }>> {
+  return banco.transaction((tx) => criarTarefaTx(tx, ator, dados, opcoes));
 }
 
 // ---- Editar ----
