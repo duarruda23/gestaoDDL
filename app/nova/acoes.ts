@@ -26,6 +26,7 @@ export interface DadosConfirmacao {
   descricao: string;
   responsavelId: string | null;
   prazo: string | null;
+  prazoHora?: string | null;
   frenteId: string | null;
   prioridade: Prioridade;
   itens: string[];
@@ -44,6 +45,7 @@ export async function confirmarPropostaAcao(
     descricao: String(d.descricao ?? "").slice(0, 5001),
     responsavelId: ouNulo(d.responsavelId),
     prazo: ouNulo(d.prazo),
+    prazoHora: ouNulo(d.prazoHora),
     frenteId: ouNulo(d.frenteId),
     prioridade: d.prioridade,
     itens: Array.isArray(d.itens) ? d.itens.map(String).slice(0, 31) : [],

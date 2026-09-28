@@ -73,6 +73,7 @@ export function Pedir({
         descricao: p.descricao,
         responsavelId: p.responsavelId,
         prazo: p.prazo,
+        prazoHora: p.prazoHora ?? null,
         frenteId: p.frenteId,
         prioridade: p.prioridade,
         itens: p.subtarefas,

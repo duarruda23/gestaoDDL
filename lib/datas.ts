@@ -46,8 +46,21 @@ export function formatarData(iso: string | null): string {
   return `${d}/${m}`;
 }
 
-export function descreverPrazo(iso: string | null, hoje = hojeISO()): string {
-  if (!iso) return "Sem prazo";
+// Hora do prazo é opcional ("HH:MM"). Sem hora, o prazo vale até o fim do dia.
+export const FORMATO_HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// "14:00" → "14h"; "09:30" → "9h30".
+export function formatarHora(hora: string): string {
+  const [h, m] = hora.split(":");
+  return `${Number(h)}h${m === "00" ? "" : m}`;
+}
+
+// Hora atual em São Paulo, "HH:MM".
+export function horaAtual(agora = new Date()): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: FUSO, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(agora);
+}
+
+function descreverDia(iso: string, hoje: string): string {
   const dif = diferencaDias(hoje, iso);
   if (dif === 0) return "Hoje";
   if (dif === 1) return "Amanhã";
@@ -55,6 +68,22 @@ export function descreverPrazo(iso: string | null, hoje = hojeISO()): string {
   if (dif < 0) return `${-dif} dias atrás`;
   if (dif < 7) return `${diaSemana(iso).replace("-feira", "")} (${formatarData(iso)})`;
   return formatarData(iso);
+}
+
+export function descreverPrazo(iso: string | null, hoje = hojeISO(), hora: string | null = null): string {
+  if (!iso) return "Sem prazo";
+  const dia = descreverDia(iso, hoje);
+  return hora ? `${dia} às ${formatarHora(hora)}` : dia;
+}
+
+// Prazo como fica no histórico: "2026-10-02" ou "2026-10-02 14:00".
+export function juntarPrazo(iso: string | null, hora: string | null): string | null {
+  return iso ? (hora ? `${iso} ${hora}` : iso) : null;
+}
+
+export function formatarPrazoHistorico(v: string): string {
+  const [iso, hora] = v.split(" ");
+  return hora ? `${formatarData(iso)} às ${formatarHora(hora)}` : formatarData(iso);
 }
 
 export function agoraISO(): string {

@@ -46,7 +46,7 @@ export async function cobrarTarefa(
     if (config && n >= config.limiteDiarioPorPessoa)
       return { ok: false, motivo: `${primeiroNome(dest.nome)} já recebeu ${n} mensagens hoje, o limite do dia. Tente amanhã ou fale direto.` };
 
-    let situacao = `Prazo: ${descreverPrazo(t.prazo, hoje).toLowerCase()}.`;
+    let situacao = `Prazo: ${descreverPrazo(t.prazo, hoje, t.prazoHora).toLowerCase()}.`;
     if (t.prazo) {
       const dif = diferencaDias(hoje, t.prazo);
       if (dif < 0) situacao = `Venceu ${dif === -1 ? "ontem" : `há ${-dif} dias`}.`;

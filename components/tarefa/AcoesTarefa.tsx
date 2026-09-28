@@ -183,6 +183,7 @@ function FormEditar({
   const [descricao, setDescricao] = useState(tarefa.descricao);
   const [resp, setResp] = useState(tarefa.responsavel?.id ?? "");
   const [prazo, setPrazo] = useState(tarefa.prazo ?? "");
+  const [hora, setHora] = useState(tarefa.prazoHora ?? "");
   const [frenteId, setFrenteId] = useState(tarefa.frente?.id ?? "");
   const [prio, setPrio] = useState<Prioridade>(tarefa.prioridade);
   // Quem perdeu o acesso não aparece na lista de pessoas, mas continua como
@@ -198,6 +199,7 @@ function FormEditar({
         descricao,
         responsavelId: resp || null,
         prazo: prazo || null,
+        prazoHora: (prazo && hora) || null,
         frenteId: frenteId || null,
         prioridade: prio,
       });
@@ -225,8 +227,18 @@ function FormEditar({
             ))}
           </select>
         </Campo>
-        <Campo id="ed-prazo" rotulo="Prazo">
-          <input id="ed-prazo" type="date" className="dl-input" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
+        <Campo id="ed-prazo" rotulo="Prazo" ajuda="Hora é opcional; sem hora, vale até o fim do dia.">
+          <div className="flex gap-2">
+            <input id="ed-prazo" type="date" className="dl-input min-w-0 flex-1" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
+            <input
+              type="time"
+              aria-label="Hora do prazo (opcional)"
+              className="dl-input w-[7.5rem]"
+              value={prazo ? hora : ""}
+              disabled={!prazo}
+              onChange={(e) => setHora(e.target.value)}
+            />
+          </div>
         </Campo>
         <Campo id="ed-frente" rotulo="Frente">
           <select id="ed-frente" className="dl-input" value={frenteId} onChange={(e) => setFrenteId(e.target.value)}>

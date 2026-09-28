@@ -141,7 +141,7 @@ export function QuadroFiltravel({
               <EtiquetaEstado estado={t.estado} />
               <span className="w-28 text-xs text-ink-muted">Faz: {t.responsavel?.nome ?? "ninguém"}</span>
               <span className="w-28 text-xs text-ink-muted">Pediu: {t.criador.nome}</span>
-              <span className={`w-28 text-xs ${estaVencida(t) ? "text-danger font-extrabold" : "text-ink-muted"}`}>{descreverPrazo(t.prazo)}</span>
+              <span className={`w-40 text-xs ${estaVencida(t) ? "text-danger font-extrabold" : "text-ink-muted"}`}>{descreverPrazo(t.prazo, undefined, t.prazoHora)}</span>
             </Link>
           ))}
         </div>

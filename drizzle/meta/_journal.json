@@ -43,6 +43,13 @@
       "when": 1790629679222,
       "tag": "0005_regra_revisao",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790631385991,
+      "tag": "0006_prazo_hora",
+      "breakpoints": true
     }
   ]
 }

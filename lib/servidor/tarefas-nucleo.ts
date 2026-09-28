@@ -4,7 +4,7 @@ import { checklistItens, comentarios, eventosTarefa, frentes, tarefaEnvolvidos, 
 import type { Estado, Prioridade } from "@/lib/types";
 import { pendenciasParaLiberar, transicoesPermitidas } from "@/lib/regras";
 import { CONFLITO } from "@/lib/conflito";
-import { descreverPrazo, hojeISO } from "@/lib/datas";
+import { FORMATO_HORA, descreverPrazo, hojeISO, juntarPrazo } from "@/lib/datas";
 import { enfileirar, primeiroNome } from "./fila";
 
 // A7 — escrita de tarefas no servidor. Modelo horizontal: qualquer conta
@@ -32,6 +32,7 @@ export interface DadosTarefa {
   descricao: string;
   responsavelId: string | null;
   prazo: string | null;
+  prazoHora?: string | null; // "HH:MM", opcional
   frenteId: string | null;
   prioridade: Prioridade;
 }
@@ -55,6 +56,7 @@ async function validarCampos(
     return { ok: false, motivo: `A descrição pode ter até ${LIMITES.descricao} caracteres.` };
   if (d.prioridade !== undefined && !PRIORIDADES.includes(d.prioridade)) return { ok: false, motivo: "Prioridade inválida." };
   if (d.prazo && !dataValida(d.prazo)) return { ok: false, motivo: "Prazo inválido." };
+  if (d.prazoHora && !FORMATO_HORA.test(d.prazoHora)) return { ok: false, motivo: "Hora do prazo inválida." };
 
   let nomeResponsavel: string | null = null;
   if (d.responsavelId) {
@@ -87,14 +89,14 @@ async function nomeDe(tx: Tx, id: string | null): Promise<string | null> {
 // outra pessoa. Quem passou a tarefa para si mesmo não é avisado.
 async function avisarAtribuicao(
   tx: Tx,
-  t: { id: string; titulo: string; prazo: string | null; criadorId: string },
+  t: { id: string; titulo: string; prazo: string | null; prazoHora?: string | null; criadorId: string },
   responsavelId: string,
   atorId: string
 ) {
   if (responsavelId === atorId) return;
   const hoje = hojeISO();
   const [ator, criador, dest] = await Promise.all([nomeDe(tx, atorId), nomeDe(tx, t.criadorId), nomeDe(tx, responsavelId)]);
-  const prazo = `Prazo: ${descreverPrazo(t.prazo, hoje).toLowerCase()}.`;
+  const prazo = `Prazo: ${descreverPrazo(t.prazo, hoje, t.prazoHora ?? null).toLowerCase()}.`;
   const quem =
     atorId === t.criadorId
       ? `${primeiroNome(ator ?? "")} te pediu: *${t.titulo}*.`
@@ -188,6 +190,7 @@ export async function criarTarefaTx(
       descricao: dados.descricao.trim(),
       responsavelId: dados.responsavelId,
       prazo: dados.prazo,
+      prazoHora: dados.prazo ? (dados.prazoHora ?? null) : null,
       frenteId: dados.frenteId,
       prioridade: dados.prioridade,
       criadorId: ator.id,
@@ -206,7 +209,7 @@ export async function criarTarefaTx(
     depois: estado === "triagem" ? `${como} (foi pra triagem)` : como,
   });
   if (estado === "a_fazer")
-    await avisarAtribuicao(tx, { id: t.id, titulo: dados.titulo.trim(), prazo: dados.prazo, criadorId: ator.id }, dados.responsavelId!, ator.id);
+    await avisarAtribuicao(tx, { id: t.id, titulo: dados.titulo.trim(), prazo: dados.prazo, prazoHora: dados.prazo ? (dados.prazoHora ?? null) : null, criadorId: ator.id }, dados.responsavelId!, ator.id);
   return { ok: true, id: t.id, estado };
 }
 
@@ -236,8 +239,10 @@ export async function editarTarefa(
 
     // Só compara o que mudou de fato: um campo igual não é validado de novo
     // (ex.: responsável que perdeu o acesso continua lá até alguém trocar).
+    // Sem data não existe hora: apagar o prazo apaga a hora junto.
+    if (edicao.prazo === null) edicao = { ...edicao, prazoHora: null };
     const alteracoes: Partial<DadosTarefa> = {};
-    for (const k of ["titulo", "descricao", "responsavelId", "prazo", "frenteId", "prioridade"] as const) {
+    for (const k of ["titulo", "descricao", "responsavelId", "prazo", "prazoHora", "frenteId", "prioridade"] as const) {
       let valor = edicao[k];
       if (valor === undefined) continue;
       if ((k === "titulo" || k === "descricao") && typeof valor === "string") valor = valor.trim();
@@ -249,6 +254,7 @@ export async function editarTarefa(
     if (!v.ok) return v;
 
     const depois = { ...atual, ...alteracoes };
+    if (depois.prazoHora && !depois.prazo) return { ok: false, motivo: "Escolha a data do prazo antes da hora." };
     if (!["triagem", "concluida"].includes(atual.estado) && pendenciasParaLiberar(depois).length > 0)
       return { ok: false, motivo: "Uma tarefa em execução precisa manter responsável, prazo e frente." };
 
@@ -262,7 +268,14 @@ export async function editarTarefa(
     const eventos: (typeof eventosTarefa.$inferInsert)[] = [];
     if (alteracoes.responsavelId !== undefined)
       eventos.push({ tarefaId: id, tipo: "responsavel", atorId: ator.id, antes: await nomeDe(tx, atual.responsavelId), depois: v.nomeResponsavel });
-    if (alteracoes.prazo !== undefined) eventos.push({ tarefaId: id, tipo: "prazo", atorId: ator.id, antes: atual.prazo, depois: alteracoes.prazo });
+    if (alteracoes.prazo !== undefined || alteracoes.prazoHora !== undefined)
+      eventos.push({
+        tarefaId: id,
+        tipo: "prazo",
+        atorId: ator.id,
+        antes: juntarPrazo(atual.prazo, atual.prazoHora),
+        depois: juntarPrazo(depois.prazo, depois.prazoHora ?? null),
+      });
     if (alteracoes.prioridade !== undefined)
       eventos.push({ tarefaId: id, tipo: "prioridade", atorId: ator.id, antes: atual.prioridade, depois: alteracoes.prioridade });
     if (eventos.length) await tx.insert(eventosTarefa).values(eventos);

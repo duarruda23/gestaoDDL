@@ -93,12 +93,12 @@ export function EtiquetaIA() {
   );
 }
 
-export function EtiquetaPrazo({ tarefa }: { tarefa: Pick<TarefaVisao, "estado" | "prazo"> }) {
+export function EtiquetaPrazo({ tarefa }: { tarefa: Pick<TarefaVisao, "estado" | "prazo" | "prazoHora"> }) {
   const estado = estaVencida(tarefa) ? "late" : venceEmBreve(tarefa) ? "soon" : "ok";
   return (
     <span className={cx("dl-deadline", estado !== "ok" && `dl-deadline-${estado}`)}>
       {estado === "late" ? "Venceu: " : ""}
-      {descreverPrazo(tarefa.prazo)}
+      {descreverPrazo(tarefa.prazo, undefined, tarefa.prazoHora)}
     </span>
   );
 }

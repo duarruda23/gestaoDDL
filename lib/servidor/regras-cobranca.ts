@@ -2,7 +2,7 @@ import { and, eq, inArray, isNotNull, lte } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Banco } from "@/db";
 import { tarefas, usuarios } from "@/db/schema";
-import { diferencaDias, hojeISO, somarDias } from "@/lib/datas";
+import { diferencaDias, formatarHora, hojeISO, horaAtual, somarDias } from "@/lib/datas";
 import { enfileirar, lerConfig, primeiroNome, type NovaMensagem } from "./fila";
 
 // Cobranças automáticas (bloco C, seção 7 do spec). O n8n chama isto em
@@ -22,7 +22,7 @@ export interface ResultadoRodada {
   jaExistiam: number;
 }
 
-export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO()): Promise<ResultadoRodada> {
+export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), agora = horaAtual()): Promise<ResultadoRodada> {
   const config = await lerConfig(banco);
   const resultado: ResultadoRodada = { novas: 0, ignoradas: 0, jaExistiam: 0 };
   if (!config?.ativa) return resultado;
@@ -34,6 +34,7 @@ export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO()):
       titulo: tarefas.titulo,
       estado: tarefas.estado,
       prazo: tarefas.prazo,
+      prazoHora: tarefas.prazoHora,
       responsavelId: tarefas.responsavelId,
       criadorId: tarefas.criadorId,
       respNome: resp.nome,
@@ -64,13 +65,15 @@ export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO()):
         regra: "prazo_proximo",
         autorId: null,
         destinatarioId: t.responsavelId!,
-        texto: `${nome}, lembrete: *${t.titulo}* vence amanhã.`,
+        texto: `${nome}, lembrete: *${t.titulo}* vence amanhã${t.prazoHora ? ` às ${formatarHora(t.prazoHora)}` : ""}.`,
       });
     }
 
     // Bloqueada não recebe cobrança de atraso: o bloqueio já está registrado.
-    if (dif < 0 && t.estado !== "bloqueada") {
-      const atraso = dif === -1 ? "ontem" : `há ${-dif} dias`;
+    // Com hora, já cobra no próprio dia depois do horário (o n8n roda de hora em hora).
+    const venceuHoje = dif === 0 && Boolean(t.prazoHora) && agora >= t.prazoHora!;
+    if ((dif < 0 || venceuHoje) && t.estado !== "bloqueada") {
+      const atraso = venceuHoje ? `hoje às ${formatarHora(t.prazoHora!)}` : dif === -1 ? "ontem" : `há ${-dif} dias`;
       const deQuem = t.criadorId === t.responsavelId ? "" : ` (pedido de ${pediu})`;
       candidatas.push({
         chave: `${t.id}|vencida|${hoje}|${t.responsavelId}`,

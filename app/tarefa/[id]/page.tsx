@@ -4,7 +4,7 @@ import { obterBanco } from "@/db";
 import { exigirConta } from "@/lib/servidor/dal";
 import { detalharTarefa, listarPessoasEFrentes } from "@/lib/servidor/consultas";
 import { ROTULO_ESTADO, ROTULO_REGRA, estaAtiva } from "@/lib/regras";
-import { formatarData, formatarDataHora } from "@/lib/datas";
+import { formatarDataHora, formatarPrazoHistorico } from "@/lib/datas";
 import type { RegraCobranca } from "@/lib/types";
 import { AcoesTarefa } from "@/components/tarefa/AcoesTarefa";
 import { ChecklistEditavel } from "@/components/tarefa/ChecklistEditavel";
@@ -47,7 +47,7 @@ function rotuloEtapa(v: string): string {
 
 function descreverMudanca(tipo: string, antes: string | null, depois: string | null): string | null {
   const rotulo = (v: string | null) =>
-    v == null ? "—" : tipo === "estado" ? rotuloEtapa(v) : tipo === "prazo" ? formatarData(v) : v;
+    v == null ? "—" : tipo === "estado" ? rotuloEtapa(v) : tipo === "prazo" ? formatarPrazoHistorico(v) : v;
   if (antes == null && depois == null) return null;
   if (antes == null) return rotulo(depois);
   return `${rotulo(antes)} → ${rotulo(depois)}`;

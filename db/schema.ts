@@ -226,6 +226,7 @@ export const tarefas = pgTable(
     motivoBloqueio: text("motivo_bloqueio"),
     prioridade: prioridade("prioridade").notNull().default("media"),
     prazo: date("prazo"), // dia no fuso America/Sao_Paulo
+    prazoHora: text("prazo_hora"), // "HH:MM" opcional; sem hora = até o fim do dia
     origem: origemTarefa("origem").notNull().default("manual"),
     pedidoId: uuid("pedido_id").references(() => pedidosEntrada.id),
     versao: integer("versao").notNull().default(1), // concorrência otimista
@@ -236,6 +237,7 @@ export const tarefas = pgTable(
     index("tarefas_por_responsavel").on(t.responsavelId, t.estado, t.prazo),
     index("tarefas_por_frente").on(t.frenteId, t.estado, t.prazo),
     index("tarefas_por_criador").on(t.criadorId, t.estado),
+    check("prazo_hora_valida", sql`${t.prazoHora} IS NULL OR (${t.prazo} IS NOT NULL AND ${t.prazoHora} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')`),
     check("bloqueio_tem_motivo", sql`${t.estado} <> 'bloqueada' OR ${t.motivoBloqueio} IS NOT NULL`),
     // Só sai da triagem com dono, prazo e frente (spec, seção 4).
     check(

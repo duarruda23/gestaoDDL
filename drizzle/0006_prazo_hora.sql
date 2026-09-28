@@ -1,0 +1,2 @@
+ALTER TABLE "tarefas" ADD COLUMN "prazo_hora" text;--> statement-breakpoint
+ALTER TABLE "tarefas" ADD CONSTRAINT "prazo_hora_valida" CHECK ("tarefas"."prazo_hora" IS NULL OR ("tarefas"."prazo" IS NOT NULL AND "tarefas"."prazo_hora" ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'));

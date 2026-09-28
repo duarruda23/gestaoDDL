@@ -27,6 +27,7 @@ export function FormNovaTarefa({
   const [itens, setItens] = useState("");
   const [resp, setResp] = useState("");
   const [prazo, setPrazo] = useState("");
+  const [hora, setHora] = useState("");
   const [frenteId, setFrenteId] = useState("");
   const faltas = pendenciasParaLiberar({ responsavelId: resp || null, prazo: prazo || null, frenteId: frenteId || null });
 
@@ -49,8 +50,19 @@ export function FormNovaTarefa({
             ))}
           </select>
         </Campo>
-        <Campo id="nv-prazo" rotulo="Prazo">
-          <input id="nv-prazo" name="prazo" type="date" className="dl-input" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
+        <Campo id="nv-prazo" rotulo="Prazo" ajuda="Hora é opcional; sem hora, vale até o fim do dia.">
+          <div className="flex gap-2">
+            <input id="nv-prazo" name="prazo" type="date" className="dl-input min-w-0 flex-1" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
+            <input
+              name="prazoHora"
+              type="time"
+              aria-label="Hora do prazo (opcional)"
+              className="dl-input w-[7.5rem]"
+              value={prazo ? hora : ""}
+              disabled={!prazo}
+              onChange={(e) => setHora(e.target.value)}
+            />
+          </div>
         </Campo>
         <Campo id="nv-frente" rotulo="Frente">
           <select id="nv-frente" name="frenteId" className="dl-input" value={frenteId} onChange={(e) => setFrenteId(e.target.value)}>

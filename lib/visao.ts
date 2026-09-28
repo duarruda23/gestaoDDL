@@ -15,6 +15,7 @@ export interface TarefaVisao {
   estadoAnterior: Estado | null;
   prioridade: Prioridade;
   prazo: string | null; // YYYY-MM-DD
+  prazoHora: string | null; // HH:MM, opcional
   origem: "manual" | "ia";
   motivoBloqueio: string | null;
   responsavel: Pessoa | null;

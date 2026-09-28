@@ -64,6 +64,7 @@ const proposta = (extra: Partial<RespostaIA["propostas"][number]>): RespostaIA["
   responsavel_id: ana.id,
   envolvidos_ids: [],
   prazo: "2026-09-26",
+  prazo_hora: null,
   prioridade: "alta",
   subtarefas: ["Roteiro", "Gravação"],
   evidencias: [{ campo: "responsavel_id", trecho: "Ana" }],

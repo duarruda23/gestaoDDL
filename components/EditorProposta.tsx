@@ -46,10 +46,10 @@ export function EditorProposta({
   euId: string;
   prefixo: string;
 }) {
-  const set = <K extends keyof Proposta>(k: K, v: Proposta[K]) => {
+  const set = <K extends keyof Proposta>(k: K, v: Proposta[K], junto: Partial<Proposta> = {}) => {
     // Campo alterado por uma pessoa deixa de ser "deduzido".
     const campo = k === "responsavelId" ? "responsavel_id" : k === "frenteId" ? "frente_id" : String(k);
-    onChange({ ...proposta, [k]: v, inferidos: proposta.inferidos.filter((c) => c !== campo) });
+    onChange({ ...proposta, ...junto, [k]: v, inferidos: proposta.inferidos.filter((c) => c !== campo) });
   };
   const id = (c: string) => `${prefixo}-${c}`;
 
@@ -103,10 +103,27 @@ export function EditorProposta({
 
         <Campo
           id={id("prazo")}
-          rotulo={proposta.prazo ? `Prazo · ${descreverPrazo(proposta.prazo)}` : "Prazo"}
+          rotulo={proposta.prazo ? `Prazo · ${descreverPrazo(proposta.prazo, undefined, proposta.prazoHora ?? null)}` : "Prazo"}
           estado={!proposta.prazo ? "pending" : undefined}
         >
-          <input id={id("prazo")} type="date" className="dl-input" value={proposta.prazo ?? ""} onChange={(e) => set("prazo", e.target.value || null)} />
+          <div className="flex gap-2">
+            <input
+              id={id("prazo")}
+              type="date"
+              className="dl-input min-w-0 flex-1"
+              value={proposta.prazo ?? ""}
+              // Sem data não existe hora.
+              onChange={(e) => set("prazo", e.target.value || null, e.target.value ? {} : { prazoHora: null })}
+            />
+            <input
+              type="time"
+              aria-label="Hora do prazo (opcional)"
+              className="dl-input w-[7.5rem]"
+              value={proposta.prazo ? (proposta.prazoHora ?? "") : ""}
+              disabled={!proposta.prazo}
+              onChange={(e) => set("prazoHora", e.target.value || null)}
+            />
+          </div>
           <Evidencia proposta={proposta} campo="prazo" />
         </Campo>
 

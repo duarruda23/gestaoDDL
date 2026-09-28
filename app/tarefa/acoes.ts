@@ -47,6 +47,7 @@ export async function criarTarefaAcao(_: EstadoNova, dados: FormData): Promise<E
     descricao: texto(dados.get("descricao"), 5000),
     responsavelId: ouNulo(dados.get("responsavelId")),
     prazo: ouNulo(dados.get("prazo")),
+    prazoHora: ouNulo(dados.get("prazoHora")),
     frenteId: ouNulo(dados.get("frenteId")),
     prioridade: (String(dados.get("prioridade") ?? "media") as Prioridade),
     itens: texto(dados.get("itens"), 10000).split("\n"),
@@ -62,7 +63,7 @@ export async function editarTarefaAcao(id: string, versao: number, edicao: Parti
   if (edicao.titulo !== undefined) limpa.titulo = texto(edicao.titulo, 200);
   if (edicao.descricao !== undefined) limpa.descricao = texto(edicao.descricao, 5000);
   if (edicao.prioridade !== undefined) limpa.prioridade = edicao.prioridade;
-  for (const k of ["responsavelId", "prazo", "frenteId"] as const) if (edicao[k] !== undefined) limpa[k] = ouNulo(edicao[k]);
+  for (const k of ["responsavelId", "prazo", "prazoHora", "frenteId"] as const) if (edicao[k] !== undefined) limpa[k] = ouNulo(edicao[k]);
   const r = await editarTarefa(obterBanco(), conta, String(id), Number(versao), limpa);
   if (r.ok) revalidar(id);
   return r;

@@ -48,11 +48,24 @@ function proximoDiaDoMes(hoje: string, dia: number, mes?: number): string | null
 
 interface Prazo {
   valor: string | null;
+  hora?: string | null;
   trecho: string | null;
   vago: string | null;
 }
 
+// "até as 14h", "10h30", "15:00" → "HH:MM". Só vale junto com uma data.
+function detectarHora(n: string): string | null {
+  const m = n.match(/(?<![\d:/])([01]?\d|2[0-3])(?:h([0-5]\d)?|:([0-5]\d))(?![\w/])/);
+  if (!m) return null;
+  return `${m[1].padStart(2, "0")}:${m[2] ?? m[3] ?? "00"}`;
+}
+
 function detectarPrazo(seg: string, hoje: string): Prazo {
+  const p = detectarData(seg, hoje);
+  return p.valor ? { ...p, hora: detectarHora(normalizar(seg)) } : p;
+}
+
+function detectarData(seg: string, hoje: string): Prazo {
   const n = normalizar(seg);
   const vago = n.match(/semana que vem|proxima semana|quando der|logo que puder|em breve|esse mes|este mes/);
   if (vago) return { valor: null, trecho: null, vago: vago[0] };
@@ -168,6 +181,7 @@ export function interpretarSimulado(
         responsavel_id: responsavel?.id ?? null,
         envolvidos_ids: citados.filter((u) => u.id !== responsavel?.id).map((u) => u.id),
         prazo: prazo.valor,
+        prazo_hora: prazo.hora ?? null,
         prioridade,
         subtarefas: [],
         evidencias,

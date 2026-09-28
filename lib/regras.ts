@@ -5,7 +5,7 @@ import type {
   RegraCobranca,
   Tarefa,
 } from "./types";
-import { diferencaDias, hojeISO } from "./datas";
+import { diferencaDias, hojeISO, horaAtual } from "./datas";
 
 export const ROTULO_ESTADO: Record<Estado, string> = {
   triagem: "Triagem",
@@ -112,14 +112,17 @@ export function pendenciasParaLiberar(t: Pick<Tarefa, "responsavelId" | "prazo" 
 
 // As funções de prazo e etapa pedem só os campos que usam: servem tanto para
 // as linhas do banco quanto para as visões das telas.
-type ComPrazo = Pick<Tarefa, "estado" | "prazo">;
+type ComPrazo = Pick<Tarefa, "estado" | "prazo"> & { prazoHora?: string | null };
 
 export function estaAtiva(t: Pick<Tarefa, "estado">): boolean {
   return t.estado !== "concluida" && t.estado !== "arquivada";
 }
 
-export function estaVencida(t: ComPrazo, hoje = hojeISO()): boolean {
-  return estaAtiva(t) && t.prazo !== null && diferencaDias(hoje, t.prazo) < 0;
+// Com hora, vence naquela hora do dia; sem hora, só no dia seguinte.
+export function estaVencida(t: ComPrazo, hoje = hojeISO(), agora = horaAtual()): boolean {
+  if (!estaAtiva(t) || t.prazo === null) return false;
+  const dif = diferencaDias(hoje, t.prazo);
+  return dif < 0 || (dif === 0 && Boolean(t.prazoHora) && agora >= t.prazoHora!);
 }
 
 export function venceEmBreve(t: ComPrazo, hoje = hojeISO()): boolean {
@@ -128,9 +131,12 @@ export function venceEmBreve(t: ComPrazo, hoje = hojeISO()): boolean {
   return dif >= 0 && dif <= 1;
 }
 
-export function ordenarPorUrgencia(a: Pick<Tarefa, "prazo" | "prioridade">, b: Pick<Tarefa, "prazo" | "prioridade">): number {
-  const pa = a.prazo ?? "9999-12-31";
-  const pb = b.prazo ?? "9999-12-31";
+type ComUrgencia = Pick<Tarefa, "prazo" | "prioridade"> & { prazoHora?: string | null };
+
+export function ordenarPorUrgencia(a: ComUrgencia, b: ComUrgencia): number {
+  // Sem hora conta como fim do dia.
+  const pa = `${a.prazo ?? "9999-12-31"} ${a.prazoHora ?? "24:00"}`;
+  const pb = `${b.prazo ?? "9999-12-31"} ${b.prazoHora ?? "24:00"}`;
   if (pa !== pb) return pa < pb ? -1 : 1;
   return ORDEM_PRIORIDADE[a.prioridade] - ORDEM_PRIORIDADE[b.prioridade];
 }
