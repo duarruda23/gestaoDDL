@@ -55,10 +55,27 @@ describe("Início", () => {
     expect(inicioItalo.comVoce.map((t) => t.titulo)).toEqual(["Aprovar roteiro"]);
     expect(inicioItalo.proximasComVoce).toHaveLength(1);
     expect(inicioItalo.vocePediu).toHaveLength(2); // vídeos (Ana) e hotel (Diego)
+    expect(inicioItalo.esperandoSuaRevisao).toHaveLength(0);
     expect(inicioItalo.vocePediuVencidas).toBe(2);
 
     const inicioDiego = await montarInicio(banco, diego.id, HOJE);
     expect(inicioDiego.bloqueadasComVoce.map((t) => t.motivoBloqueio)).toEqual(["Esperando contrato"]);
+  });
+});
+
+describe("Início: revisão", () => {
+  it("quem pediu vê a entrega que chegou pra revisar; quem executa, não", async () => {
+    const [f] = await banco.select().from(frentes).limit(1);
+    await banco.insert(tarefas).values({
+      titulo: "Carrossel de outubro",
+      criadorId: italo.id,
+      responsavelId: diego.id,
+      frenteId: f.id,
+      prazo: "2026-09-30",
+      estado: "em_revisao",
+    });
+    expect((await montarInicio(banco, italo.id, HOJE)).esperandoSuaRevisao.map((t) => t.titulo)).toEqual(["Carrossel de outubro"]);
+    expect((await montarInicio(banco, diego.id, HOJE)).esperandoSuaRevisao).toHaveLength(0);
   });
 });
 

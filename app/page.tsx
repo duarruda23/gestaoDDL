@@ -40,6 +40,13 @@ export default async function Inicio() {
         <Contador valor={inicio.vocePediuVencidas} rotulo="Você pediu, vencidas" tom="warning" />
       </section>
 
+      {inicio.esperandoSuaRevisao.length > 0 && (
+        <section>
+          <TituloSecao>Esperando sua revisão</TituloSecao>
+          <Grade tarefas={inicio.esperandoSuaRevisao} />
+        </section>
+      )}
+
       {cobrancas.length > 0 && (
         <section>
           <TituloSecao>Te cobraram</TituloSecao>

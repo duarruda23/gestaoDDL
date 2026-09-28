@@ -92,6 +92,7 @@ export interface Inicio {
   bloqueadasComVoce: TarefaVisao[];
   vocePediu: TarefaVisao[]; // você pediu, em aberto, com outra pessoa
   vocePediuVencidas: number;
+  esperandoSuaRevisao: TarefaVisao[]; // você pediu e a entrega chegou pra você revisar
 }
 
 export async function montarInicio(banco: Banco, contaId: string, hoje?: string): Promise<Inicio> {
@@ -106,6 +107,7 @@ export async function montarInicio(banco: Banco, contaId: string, hoje?: string)
     bloqueadasComVoce: comVoce.filter((t) => t.estado === "bloqueada"),
     vocePediu,
     vocePediuVencidas: vocePediu.filter((t) => estaVencida(t, hoje)).length,
+    esperandoSuaRevisao: vocePediu.filter((t) => t.estado === "em_revisao"),
   };
 }
 
