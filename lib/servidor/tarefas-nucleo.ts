@@ -113,6 +113,33 @@ async function avisarAtribuicao(
   );
 }
 
+// Revisão: quem pediu fica sabendo que a entrega chegou pra revisar; quem
+// executa fica sabendo quando pedem ajustes. A versão entra na chave para
+// cada ida e volta gerar o seu aviso.
+async function avisarRevisao(
+  tx: Tx,
+  t: { id: string; titulo: string; criadorId: string; responsavelId: string | null },
+  versao: number,
+  para: "em_revisao" | "ajustes",
+  atorId: string
+) {
+  const destinatarioId = para === "em_revisao" ? t.criadorId : t.responsavelId;
+  if (!destinatarioId || destinatarioId === atorId) return;
+  const [ator, dest] = await Promise.all([nomeDe(tx, atorId), nomeDe(tx, destinatarioId)]);
+  const texto =
+    para === "em_revisao"
+      ? `Oi, ${primeiroNome(dest ?? "")}! ${primeiroNome(ator ?? "")} enviou pra sua revisão: *${t.titulo}*. Aprove ou peça ajustes no sistema.`
+      : `Oi, ${primeiroNome(dest ?? "")}! ${primeiroNome(ator ?? "")} pediu ajustes em *${t.titulo}*. Veja os comentários no sistema.`;
+  await enfileirar(tx, {
+    chave: `${t.id}|revisao|v${versao}|${destinatarioId}`,
+    tarefaId: t.id,
+    regra: "revisao",
+    autorId: atorId,
+    destinatarioId,
+    texto: process.env.SITE_URL ? `${texto} ${process.env.SITE_URL}/tarefa/${t.id}` : texto,
+  });
+}
+
 // Lê a tarefa travando a linha até o fim da transação.
 async function travar(tx: Tx, id: string) {
   if (!FORMATO_UUID.test(id)) return undefined;
@@ -300,6 +327,8 @@ export async function mudarEtapa(
       depois: bloqueando ? `${para} — ${motivoLimpo}` : para,
     });
     if (atual.estado === "triagem") await avisarAtribuicao(tx, atual, atual.responsavelId!, ator.id);
+    if (para === "em_revisao") await avisarRevisao(tx, atual, salva.versao, "em_revisao", ator.id);
+    if (atual.estado === "em_revisao" && para === "em_andamento") await avisarRevisao(tx, atual, salva.versao, "ajustes", ator.id);
     return { ok: true, versao: salva.versao };
   });
 }

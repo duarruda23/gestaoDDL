@@ -36,6 +36,13 @@
       "when": 1790627701072,
       "tag": "0004_redefinir_senha",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790629679222,
+      "tag": "0005_regra_revisao",
+      "breakpoints": true
     }
   ]
 }

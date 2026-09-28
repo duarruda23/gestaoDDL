@@ -126,6 +126,29 @@ describe("etapas", () => {
     expect(await mudarEtapa(banco, ana, id, 2, "em_revisao")).toMatchObject({ ok: true });
   });
 
+  it("qualquer demanda pode ir pra revisão; quem pediu é avisado e quem executa recebe os ajustes", async () => {
+    const { id } = (await criarTarefa(banco, italo, completa())) as { id: string }; // frente sem revisão
+    await mudarEtapa(banco, ana, id, 1, "em_andamento");
+    expect(await mudarEtapa(banco, ana, id, 2, "em_revisao")).toMatchObject({ ok: true });
+    expect(await mudarEtapa(banco, italo, id, 3, "em_andamento")).toMatchObject({ ok: true }); // pedir ajustes
+    expect(await mudarEtapa(banco, ana, id, 4, "em_revisao")).toMatchObject({ ok: true }); // segunda rodada
+    expect(await mudarEtapa(banco, italo, id, 5, "concluida")).toMatchObject({ ok: true });
+
+    const avisos = (await banco.select().from(mensagens).where(eq(mensagens.regra, "revisao"))).sort(
+      (a, b) => a.criadoEm.getTime() - b.criadoEm.getTime() || a.chave.localeCompare(b.chave)
+    );
+    expect(avisos.map((m) => m.destinatarioId).sort()).toEqual([ana.id, italo.id, italo.id].sort());
+    expect(avisos.filter((m) => m.destinatarioId === italo.id).every((m) => m.texto.includes("enviou pra sua revisão"))).toBe(true);
+    expect(avisos.find((m) => m.destinatarioId === ana.id)?.texto).toContain("pediu ajustes");
+  });
+
+  it("quem pediu e enviou pra revisão a própria demanda não recebe aviso", async () => {
+    const { id } = (await criarTarefa(banco, ana, { ...completa(), responsavelId: ana.id })) as { id: string };
+    await mudarEtapa(banco, ana, id, 1, "em_andamento");
+    await mudarEtapa(banco, ana, id, 2, "em_revisao");
+    expect(await banco.select().from(mensagens).where(eq(mensagens.regra, "revisao"))).toHaveLength(0);
+  });
+
   it("bloqueio exige motivo e desbloqueio volta à etapa anterior", async () => {
     const { id } = (await criarTarefa(banco, italo, completa())) as { id: string };
     await mudarEtapa(banco, ana, id, 1, "em_andamento");

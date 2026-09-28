@@ -32,6 +32,7 @@ export const ROTULO_REGRA: Record<RegraCobranca, string> = {
   cobranca_manual: "Cobrança de colega",
   resumo_diario: "Resumo diário",
   redefinir_senha: "Link de nova senha",
+  revisao: "Revisão",
 };
 
 export const COLUNAS_QUADRO: Estado[] = [
@@ -63,9 +64,10 @@ export function transicoesPermitidas(
     case "a_fazer":
       return ["em_andamento", "bloqueada"];
     case "em_andamento":
+      // Qualquer demanda pode ir pra revisão; na frente que usa revisão, é obrigatório.
       return usaRevisao
         ? ["em_revisao", "bloqueada", "a_fazer"]
-        : ["concluida", "bloqueada", "a_fazer"];
+        : ["concluida", "em_revisao", "bloqueada", "a_fazer"];
     case "em_revisao":
       return ["concluida", "em_andamento"];
     case "bloqueada":
@@ -80,6 +82,7 @@ export function transicoesPermitidas(
 export function rotuloTransicao(de: Estado, para: Estado): string {
   if (de === "bloqueada") return "Desbloquear";
   if (de === "em_revisao" && para === "em_andamento") return "Pedir ajustes";
+  if (de === "em_revisao" && para === "concluida") return "Aprovar e concluir";
   if (de === "concluida") return "Reabrir";
   if (de === "triagem") return "Liberar para execução";
   if (para === "a_fazer") return "Voltar para a fazer";

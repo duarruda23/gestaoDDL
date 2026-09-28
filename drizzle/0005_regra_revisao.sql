@@ -1,0 +1,1 @@
+ALTER TYPE "public"."regra_cobranca" ADD VALUE 'revisao';

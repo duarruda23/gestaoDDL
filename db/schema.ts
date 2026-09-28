@@ -70,6 +70,7 @@ export const regraCobranca = pgEnum("regra_cobranca", [
   "cobranca_manual",
   "resumo_diario",
   "redefinir_senha",
+  "revisao",
 ]);
 export const statusEnvio = pgEnum("status_envio", ["pendente", "enviando", "enviado", "falhou", "ignorado"]);
 export const modoInterpretacao = pgEnum("modo_interpretacao", ["ia", "regras"]);
