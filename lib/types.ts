@@ -147,7 +147,8 @@ export type RegraCobranca =
   | "vencida"
   | "escalonamento"
   | "cobranca_manual"
-  | "resumo_diario";
+  | "resumo_diario"
+  | "redefinir_senha";
 
 export type StatusEnvio = "pendente" | "enviado" | "falhou" | "ignorado";
 

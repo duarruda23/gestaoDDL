@@ -7,7 +7,7 @@ export const metadata = { title: "Convite · Gestão Donas de Loja" };
 
 const MENSAGENS = {
   usado: "Este convite já foi usado. Se você já criou a senha, é só entrar.",
-  vencido: "Este convite venceu (vale por 72 horas). Peça um novo a quem te convidou.",
+  vencido: "Este link venceu. Se era pra redefinir a senha, peça outro em \"Esqueci minha senha\"; se era convite, peça um novo a quem te convidou.",
   inexistente: "Este link de convite não existe. Confira se copiou o endereço inteiro.",
 } as const;
 

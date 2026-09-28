@@ -41,19 +41,24 @@ export async function reservarMensagens(
   agora = new Date()
 ): Promise<{ mensagens: MensagemParaEnviar[]; motivo?: string }> {
   const config = await lerConfig(banco);
-  if (!config?.ativa) return { mensagens: [], motivo: "Cobranças desligadas na configuração." };
   const hora = horaEmSP(agora);
-  // Janela de silêncio vale para todas, inclusive a cobrança manual: quem
-  // cobra às 23h tem a mensagem entregue de manhã.
-  if (hora < config.janelaInicio || hora >= config.janelaFim)
-    return { mensagens: [], motivo: `Fora da janela de envio (${config.janelaInicio}h às ${config.janelaFim}h).` };
+  // Janela de silêncio vale para todas as cobranças, inclusive a manual: quem
+  // cobra às 23h tem a mensagem entregue de manhã. A única exceção é o link de
+  // redefinição de senha, que a própria pessoa pediu agora: sai a qualquer
+  // hora, mesmo com as cobranças desligadas.
+  const motivoParado = !config?.ativa
+    ? "Cobranças desligadas na configuração."
+    : hora < config.janelaInicio || hora >= config.janelaFim
+      ? `Fora da janela de envio (${config.janelaInicio}h às ${config.janelaFim}h).`
+      : null;
 
-  return banco.transaction(async (tx) => {
+  const r = await banco.transaction(async (tx) => {
     const candidatas = await tx
       .select({
         id: mensagens.id,
         texto: mensagens.texto,
         status: mensagens.status,
+        regra: mensagens.regra,
         tentativas: mensagens.tentativas,
         nome: usuarios.nome,
         telefone: usuarios.telefoneWhatsapp,
@@ -63,9 +68,12 @@ export async function reservarMensagens(
       .from(mensagens)
       .innerJoin(usuarios, eq(usuarios.id, mensagens.destinatarioId))
       .where(
-        or(
-          and(eq(mensagens.status, "pendente"), lte(mensagens.agendadaPara, agora)),
-          and(eq(mensagens.status, "enviando"), lt(mensagens.reservadaAte, agora))
+        and(
+          or(
+            and(eq(mensagens.status, "pendente"), lte(mensagens.agendadaPara, agora)),
+            and(eq(mensagens.status, "enviando"), lt(mensagens.reservadaAte, agora))
+          ),
+          motivoParado ? eq(mensagens.regra, "redefinir_senha") : undefined
         )
       )
       .orderBy(asc(mensagens.agendadaPara))
@@ -77,7 +85,7 @@ export async function reservarMensagens(
       // A situação de quem recebe pode ter mudado desde que a mensagem entrou na fila.
       const motivo = !c.ativo
         ? "Essa pessoa não tem mais acesso ao sistema."
-        : c.pausada
+        : c.pausada && c.regra !== "redefinir_senha"
           ? `${primeiroNome(c.nome)} pausou as cobranças no WhatsApp.`
           : !normalizarTelefone(c.telefone)
             ? `${primeiroNome(c.nome)} ainda não cadastrou o WhatsApp.`
@@ -100,8 +108,9 @@ export async function reservarMensagens(
         .where(eq(mensagens.id, c.id));
       saida.push({ id: c.id, telefone: normalizarTelefone(c.telefone), nome: c.nome, texto: c.texto });
     }
-    return { mensagens: saida };
+    return saida;
   });
+  return motivoParado && r.length === 0 ? { mensagens: [], motivo: motivoParado } : { mensagens: r };
 }
 
 export type Retorno = { ok: true; status: string } | { ok: false; motivo: string };
@@ -123,9 +132,11 @@ export async function registrarResultado(
 
     const idProvedor = r.idProvedor ? String(r.idProvedor).slice(0, 200) : null;
     if (r.ok) {
+      // Enviado o link de redefinição, ele sai do banco: o token só existe no WhatsApp da pessoa.
+      const texto = m.regra === "redefinir_senha" ? "[link de redefinição de senha enviado; apagado do sistema]" : m.texto;
       await tx
         .update(mensagens)
-        .set({ status: "enviado", enviadaEm: agora, idProvedor, motivo: null, reservadaAte: null })
+        .set({ status: "enviado", enviadaEm: agora, idProvedor, motivo: null, reservadaAte: null, texto })
         .where(eq(mensagens.id, m.id));
       return { ok: true, status: "enviado" };
     }

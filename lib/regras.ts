@@ -31,6 +31,7 @@ export const ROTULO_REGRA: Record<RegraCobranca, string> = {
   escalonamento: "Aviso a quem pediu",
   cobranca_manual: "Cobrança de colega",
   resumo_diario: "Resumo diário",
+  redefinir_senha: "Link de nova senha",
 };
 
 export const COLUNAS_QUADRO: Estado[] = [

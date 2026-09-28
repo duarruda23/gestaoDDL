@@ -29,6 +29,13 @@
       "when": 1790443243298,
       "tag": "0003_evento_anexo",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790627701072,
+      "tag": "0004_redefinir_senha",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { entrar, type EstadoEntrar } from "@/app/entrar/acoes";
 import { Botao, Campo } from "./ui";
@@ -29,9 +30,10 @@ export function FormEntrar({ voltar }: { voltar: string }) {
       <Botao type="submit" variant="primary" size="lg" block disabled={enviando}>
         {enviando ? "Entrando..." : "Entrar"}
       </Botao>
-      <p className="text-xs text-ink-subtle">
-        Ainda não tem acesso? Peça um convite a alguém da equipe. Esqueceu a senha? Peça um novo convite ao Ítalo.
-      </p>
+      <Link href="/entrar/esqueci" className="self-center text-sm font-semibold text-ink underline underline-offset-4">
+        Esqueci minha senha
+      </Link>
+      <p className="text-xs text-ink-subtle">Ainda não tem acesso? Peça um convite a alguém da equipe.</p>
     </form>
   );
 }

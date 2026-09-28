@@ -60,6 +60,7 @@ export const tipoEventoAcesso = pgEnum("tipo_evento_acesso", [
   "permissao_retirada",
   "login",
   "login_falhou",
+  "redefinicao_pedida",
 ]);
 export const regraCobranca = pgEnum("regra_cobranca", [
   "atribuicao",
@@ -68,6 +69,7 @@ export const regraCobranca = pgEnum("regra_cobranca", [
   "escalonamento",
   "cobranca_manual",
   "resumo_diario",
+  "redefinir_senha",
 ]);
 export const statusEnvio = pgEnum("status_envio", ["pendente", "enviando", "enviado", "falhou", "ignorado"]);
 export const modoInterpretacao = pgEnum("modo_interpretacao", ["ia", "regras"]);

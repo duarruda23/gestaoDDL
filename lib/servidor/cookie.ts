@@ -17,6 +17,7 @@ export function opcoesDoCookie(expiraEm: Date) {
 export function rotaPublica(caminho: string): boolean {
   return (
     caminho === "/entrar" ||
+    caminho === "/entrar/esqueci" ||
     caminho.startsWith("/convite/") ||
     caminho.startsWith("/api/n8n/") // autenticadas por N8N_TOKEN, não por cookie
   );

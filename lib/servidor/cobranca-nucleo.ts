@@ -100,6 +100,8 @@ export interface MensagemVisao {
   destinatario: { id: string; nome: string };
 }
 
+export const TEXTO_REDEFINICAO_OCULTO = "Link pra criar uma senha nova (o conteúdo fica oculto por segurança).";
+
 const autorM = alias(usuarios, "autor_m");
 const destM = alias(usuarios, "dest_m");
 
@@ -136,7 +138,8 @@ export async function listarMensagens(banco: Banco, filtro: { destinatarioId?: s
     regra: l.regra,
     status: l.status,
     motivo: l.motivo,
-    texto: l.texto,
+    // O link de redefinição de senha dá acesso à conta: só o WhatsApp da pessoa vê.
+    texto: l.regra === "redefinir_senha" ? TEXTO_REDEFINICAO_OCULTO : l.texto,
     tentativas: l.tentativas,
     criadoEm: l.criadoEm.toISOString(),
     enviadaEm: l.enviadaEm?.toISOString() ?? null,
