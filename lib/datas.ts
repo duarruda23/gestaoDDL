@@ -1,6 +1,6 @@
-// Datas sempre no fuso America/Sao_Paulo (regra da seção 6 do spec).
+// Datas do negócio no fuso fixo de Recife.
 
-export const FUSO = "America/Sao_Paulo";
+export const FUSO = "America/Recife";
 
 export function hojeISO(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -55,7 +55,7 @@ export function formatarHora(hora: string): string {
   return `${Number(h)}h${m === "00" ? "" : m}`;
 }
 
-// Hora atual em São Paulo, "HH:MM".
+// Hora atual em Recife, "HH:MM".
 export function horaAtual(agora = new Date()): string {
   return new Intl.DateTimeFormat("en-GB", { timeZone: FUSO, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(agora);
 }

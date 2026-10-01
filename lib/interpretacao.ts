@@ -17,7 +17,7 @@ export const PropostaSchema = z.object({
   frente_id: z.string().nullable().describe("ID de uma frente da lista, ou null se não der pra saber"),
   responsavel_id: z.string().nullable().describe("ID da pessoa que EXECUTA a entrega, ou null se não estiver claro"),
   envolvidos_ids: z.array(z.string()).describe("IDs de outras pessoas citadas (quem aprova, quem é cobrado, quem pediu)"),
-  prazo: z.string().nullable().describe("Data YYYY-MM-DD no fuso America/Sao_Paulo, ou null se o texto não indicar"),
+  prazo: z.string().nullable().describe("Data YYYY-MM-DD no fuso America/Recife, ou null se o texto não indicar"),
   prazo_hora: z.string().nullable().describe("Hora HH:MM (24h) do prazo, só se o texto disser um horário; senão null"),
   prioridade: z.enum(["baixa", "media", "alta", "urgente"]),
   subtarefas: z.array(z.string()).describe("Passos listados no texto; vazio se o texto não listar"),
@@ -49,7 +49,7 @@ export function montarSystemPrompt(hoje: string, usuarios: PessoaIA[], frentes: 
 
 Quem está escrevendo este pedido: ${quemEscreve}. "Eu", "pra mim" e "comigo" se referem a essa pessoa.
 
-Hoje é ${diaSemana(hoje)}, ${hoje} (fuso America/Sao_Paulo).
+Hoje é ${diaSemana(hoje)}, ${hoje} (fuso America/Recife).
 
 Pessoas da equipe:
 ${pessoas}

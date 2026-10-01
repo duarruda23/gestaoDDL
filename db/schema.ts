@@ -75,6 +75,9 @@ export const regraCobranca = pgEnum("regra_cobranca", [
 export const statusEnvio = pgEnum("status_envio", ["pendente", "enviando", "enviado", "falhou", "ignorado"]);
 export const modoInterpretacao = pgEnum("modo_interpretacao", ["ia", "regras"]);
 export const situacaoProposta = pgEnum("situacao_proposta", ["aberta", "confirmada", "descartada"]);
+export const frequenciaRecorrencia = pgEnum("frequencia_recorrencia", ["diaria", "semanal", "mensal", "anual", "personalizada"]);
+export const estadoSerie = pgEnum("estado_serie", ["ativa", "pausada", "encerrada"]);
+export const origemOcorrencia = pgEnum("origem_ocorrencia", ["automatica", "criada_na_serie"]);
 
 // ---------- Pessoas, login e acesso ----------
 
@@ -212,6 +215,70 @@ export const propostasIa = pgTable(
 
 // ---------- Tarefas ----------
 
+// Regra da série; tarefas já criadas mantêm responsável, prazo e histórico próprios.
+export const seriesRecorrentes = pgTable(
+  "series_recorrentes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    titulo: text("titulo").notNull(),
+    descricao: text("descricao").notNull().default(""),
+    frenteId: uuid("frente_id").notNull().references(() => frentes.id),
+    prioridade: prioridade("prioridade").notNull().default("media"),
+    frequencia: frequenciaRecorrencia("frequencia").notNull(),
+    intervalo: integer("intervalo").notNull().default(1),
+    diasSemana: integer("dias_semana").array(),
+    diaMes: smallint("dia_mes"),
+    ultimoDiaMes: boolean("ultimo_dia_mes").notNull().default(false),
+    mesAno: smallint("mes_ano"),
+    diaAno: smallint("dia_ano"),
+    inicioEm: date("inicio_em").notNull(),
+    fimEm: date("fim_em"),
+    horaVencimento: text("hora_vencimento"),
+    timezone: text("timezone").notNull().default("America/Recife"),
+    responsavelId: uuid("responsavel_id").notNull().references(() => usuarios.id),
+    criadoPorId: uuid("criado_por_id").notNull().references(() => usuarios.id),
+    estado: estadoSerie("estado").notNull().default("ativa"),
+    requerAtencao: boolean("requer_atencao").notNull().default(false),
+    pausadaEm: timestamp("pausada_em", { withTimezone: true }),
+    pausadaPorId: uuid("pausada_por_id").references(() => usuarios.id),
+    motivoPausa: text("motivo_pausa"),
+    encerradaEm: timestamp("encerrada_em", { withTimezone: true }),
+    encerradaPorId: uuid("encerrada_por_id").references(() => usuarios.id),
+    motivoEncerramento: text("motivo_encerramento"),
+    versao: integer("versao").notNull().default(1),
+    criadaEm: criadoEm(),
+    atualizadaEm: timestamp("atualizada_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("series_por_estado").on(t.estado),
+    check("serie_intervalo_positivo", sql`${t.intervalo} > 0`),
+    check("serie_fim_valido", sql`${t.fimEm} IS NULL OR ${t.fimEm} >= ${t.inicioEm}`),
+    check("serie_fuso_recife", sql`${t.timezone} = 'America/Recife'`),
+    check("serie_hora_valida", sql`${t.horaVencimento} IS NULL OR ${t.horaVencimento} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
+    check("serie_dias_validos", sql`${t.diasSemana} IS NULL OR (${t.diasSemana} <@ ARRAY[1,2,3,4,5,6,7]::integer[] AND cardinality(${t.diasSemana}) BETWEEN 1 AND 7)`),
+    check("serie_regra_valida", sql`COALESCE((
+      (${t.frequencia} = 'diaria' AND ${t.diasSemana} IS NULL AND ${t.diaMes} IS NULL AND ${t.mesAno} IS NULL AND ${t.diaAno} IS NULL AND NOT ${t.ultimoDiaMes})
+      OR (${t.frequencia} IN ('semanal','personalizada') AND cardinality(${t.diasSemana}) >= 1 AND ${t.diaMes} IS NULL AND ${t.mesAno} IS NULL AND ${t.diaAno} IS NULL AND NOT ${t.ultimoDiaMes})
+      OR (${t.frequencia} = 'mensal' AND ${t.diasSemana} IS NULL AND ((${t.diaMes} BETWEEN 1 AND 31 AND NOT ${t.ultimoDiaMes}) OR (${t.diaMes} IS NULL AND ${t.ultimoDiaMes})) AND ${t.mesAno} IS NULL AND ${t.diaAno} IS NULL)
+      OR (${t.frequencia} = 'anual' AND ${t.diasSemana} IS NULL AND ${t.diaMes} IS NULL AND NOT ${t.ultimoDiaMes} AND ${t.mesAno} BETWEEN 1 AND 12 AND ${t.diaAno} BETWEEN 1 AND 31)
+    ), false)`),
+  ]
+);
+
+export const eventosSerie = pgTable(
+  "eventos_serie",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    serieId: uuid("serie_id").notNull().references(() => seriesRecorrentes.id),
+    tipo: text("tipo").notNull(),
+    atorId: uuid("ator_id").notNull().references(() => usuarios.id),
+    antes: jsonb("antes"),
+    depois: jsonb("depois"),
+    criadoEm: criadoEm(),
+  },
+  (t) => [index("eventos_por_serie").on(t.serieId, t.criadoEm)]
+);
+
 export const tarefas = pgTable(
   "tarefas",
   {
@@ -225,10 +292,15 @@ export const tarefas = pgTable(
     estadoAnterior: estadoTarefa("estado_anterior"), // volta de bloqueio e desfazer arquivamento
     motivoBloqueio: text("motivo_bloqueio"),
     prioridade: prioridade("prioridade").notNull().default("media"),
-    prazo: date("prazo"), // dia no fuso America/Sao_Paulo
+    prazo: date("prazo"), // dia no fuso America/Recife
     prazoHora: text("prazo_hora"), // "HH:MM" opcional; sem hora = até o fim do dia
     origem: origemTarefa("origem").notNull().default("manual"),
     pedidoId: uuid("pedido_id").references(() => pedidosEntrada.id),
+    serieRecorrenteId: uuid("serie_recorrente_id").references(() => seriesRecorrentes.id),
+    chaveOcorrencia: text("chave_ocorrencia"),
+    dataProgramadaLocal: date("data_programada_local"),
+    geradaEm: timestamp("gerada_em", { withTimezone: true }),
+    origemOcorrencia: origemOcorrencia("origem_ocorrencia"),
     versao: integer("versao").notNull().default(1), // concorrência otimista
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
@@ -237,6 +309,8 @@ export const tarefas = pgTable(
     index("tarefas_por_responsavel").on(t.responsavelId, t.estado, t.prazo),
     index("tarefas_por_frente").on(t.frenteId, t.estado, t.prazo),
     index("tarefas_por_criador").on(t.criadorId, t.estado),
+    uniqueIndex("tarefas_ocorrencia_unica").on(t.serieRecorrenteId, t.chaveOcorrencia),
+    check("ocorrencia_completa", sql`(${t.serieRecorrenteId} IS NULL AND ${t.chaveOcorrencia} IS NULL AND ${t.dataProgramadaLocal} IS NULL AND ${t.geradaEm} IS NULL AND ${t.origemOcorrencia} IS NULL) OR (${t.serieRecorrenteId} IS NOT NULL AND ${t.chaveOcorrencia} IS NOT NULL AND ${t.dataProgramadaLocal} IS NOT NULL AND ${t.geradaEm} IS NOT NULL AND ${t.origemOcorrencia} IS NOT NULL)`),
     check("prazo_hora_valida", sql`${t.prazoHora} IS NULL OR (${t.prazo} IS NOT NULL AND ${t.prazoHora} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')`),
     check("bloqueio_tem_motivo", sql`${t.estado} <> 'bloqueada' OR ${t.motivoBloqueio} IS NOT NULL`),
     // Só sai da triagem com dono, prazo e frente (spec, seção 4).
