@@ -151,7 +151,7 @@ export async function listarMensagens(banco: Banco, filtro: { destinatarioId?: s
 
 // Cobranças feitas por colegas nos últimos dias, para o Início.
 export async function cobrancasRecebidas(banco: Banco, contaId: string, dias = 7, hoje = hojeISO()): Promise<MensagemVisao[]> {
-  const desde = `${somarDias(hoje, -dias)}T03:00:00Z`; // meia-noite em São Paulo
+  const desde = `${somarDias(hoje, -dias)}T03:00:00Z`; // meia-noite em Recife no offset atual; generalizar na etapa E3
   const todas = await listarMensagens(banco, { destinatarioId: contaId, desde }, 50);
   return todas.filter((m) => m.regra === "cobranca_manual" && m.tarefa);
 }

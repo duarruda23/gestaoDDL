@@ -21,7 +21,7 @@ export interface NovaMensagem {
 
 export const primeiroNome = (nome: string) => nome.split(" ")[0];
 
-// Mensagens do dia (em São Paulo) que contam para o limite de quem recebe.
+// Mensagens do dia (em Recife) que contam para o limite de quem recebe.
 export async function mensagensDoDia(tx: Tx | Banco, destinatarioId: string, hoje = hojeISO()): Promise<number> {
   const [{ n }] = await tx
     .select({ n: sql<number>`count(*)::int` })
