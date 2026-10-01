@@ -1,23 +1,29 @@
-"use client";
-
 import Link from "next/link";
-import { useState } from "react";
-import { useGestao } from "@/lib/store";
-import type { Mensagem, StatusEnvio } from "@/lib/types";
+import { obterBanco } from "@/db";
+import { exigirConta } from "@/lib/servidor/dal";
+import { listarMensagens, type MensagemVisao } from "@/lib/servidor/cobranca-nucleo";
 import { ROTULO_REGRA } from "@/lib/regras";
 import { formatarDataHora } from "@/lib/datas";
-import { DIAS_PARA_AVISAR_QUEM_PEDIU, JANELA_FIM, JANELA_INICIO, dentroDaJanela } from "@/lib/cobrancas";
-import { Botao, EtiquetaEstado, Segmentado, TituloPagina, Vazio } from "@/components/ui";
+import type { RegraCobranca } from "@/lib/types";
+import { PausarCobrancas } from "@/components/PausarCobrancas";
+import { Reenviar } from "@/components/Reenviar";
+import { EtiquetaEstado, TituloPagina, Vazio } from "@/components/ui";
 
-const ROTULO_STATUS: Record<StatusEnvio, string> = {
-  pendente: "Aguardando janela",
+export const metadata = { title: "Cobranças · Gestão Donas de Loja" };
+
+type Status = "pendente" | "enviando" | "enviado" | "falhou" | "ignorado";
+
+const ROTULO_STATUS: Record<Status, string> = {
+  pendente: "Na fila",
+  enviando: "Enviando",
   enviado: "Enviada",
   falhou: "Falhou",
   ignorado: "Não enviada",
 };
 
-const ESTADO_VISUAL: Record<StatusEnvio, "concluida" | "triagem" | "bloqueada" | "arquivada"> = {
+const ESTADO_VISUAL: Record<Status, "concluida" | "triagem" | "bloqueada" | "arquivada" | "em_andamento"> = {
   enviado: "concluida",
+  enviando: "em_andamento",
   pendente: "triagem",
   falhou: "bloqueada",
   ignorado: "arquivada",
@@ -28,106 +34,80 @@ function negritoWhats(texto: string) {
   return texto.split("*").map((parte, i) => (i % 2 ? <b key={i}>{parte}</b> : parte));
 }
 
-function Balao({ m }: { m: Mensagem }) {
-  const { usuarios, tarefas, reenviarMensagem } = useGestao();
-  const nome = (id: string | null) => usuarios.find((u) => u.id === id)?.nome ?? "?";
-  const titulo = m.regra === "cobranca_manual" ? `${nome(m.autorId)} cobrou` : ROTULO_REGRA[m.regra];
+function Balao({ m }: { m: MensagemVisao }) {
+  const status = m.status as Status;
+  const titulo = m.regra === "cobranca_manual" ? `${m.autor?.nome ?? "?"} cobrou` : ROTULO_REGRA[m.regra as RegraCobranca] ?? m.regra;
   return (
-    <div className={`dl-panel dl-msg-${m.status} !max-w-none`}>
+    <div className={`dl-panel dl-msg-${status}`}>
       <div className="dl-msg-head">
         <span>
-          <strong>{titulo}</strong> → {nome(m.destinatarioId)} · {formatarDataHora(m.criadoEm)}
+          <strong>{titulo}</strong> → {m.destinatario.nome} · {formatarDataHora(m.criadoEm)}
         </span>
-        <EtiquetaEstado estado={ESTADO_VISUAL[m.status]}>{ROTULO_STATUS[m.status]}</EtiquetaEstado>
+        <EtiquetaEstado estado={ESTADO_VISUAL[status] ?? "triagem"}>{ROTULO_STATUS[status] ?? m.status}</EtiquetaEstado>
       </div>
-      {m.texto && <div className="dl-msg-bubble max-w-md">{negritoWhats(m.texto)}</div>}
+      <div className="dl-msg-bubble max-w-md">{negritoWhats(m.texto)}</div>
       {m.motivo && <p className="dl-msg-note">{m.motivo}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-subtle">
-        {m.tarefaId && tarefas.some((t) => t.id === m.tarefaId) && (
-          <Link href={`/tarefa/${m.tarefaId}`} className="dl-link">
+        {m.tarefa && (
+          <Link href={`/tarefa/${m.tarefa.id}`} className="dl-link">
             Ver tarefa
           </Link>
         )}
-        <span>Tentativas: {m.tentativas}</span>
-        <span className="dl-code">{m.chave}</span>
-        {m.status === "falhou" && (
-          <Botao variant="secondary" className="!min-h-8 !px-3 !text-xs" onClick={() => reenviarMensagem(m.id)}>
-            Tentar de novo
-          </Botao>
-        )}
+        {m.tentativas > 0 && <span>Tentativas: {m.tentativas}</span>}
+        {status === "falhou" && <Reenviar id={m.id} />}
       </div>
     </div>
   );
 }
 
-export default function Cobrancas() {
-  const { usuarioAtual, mensagens, usuarios, rodarCobrancasAgora, alternarPausa } = useGestao();
-  const [ignorarJanela, setIgnorarJanela] = useState(false);
-  const [retorno, setRetorno] = useState<string | null>(null);
-  const [filtro, setFiltro] = useState<StatusEnvio | "">("");
-  const [escopo, setEscopo] = useState<"todas" | "minhas">("todas");
+const ESCOPOS = { todas: "Toda a equipe", comigo: "Para mim", minhas: "Que eu fiz" } as const;
+type Escopo = keyof typeof ESCOPOS;
 
-  if (!usuarioAtual) return null;
-  const eu = usuarioAtual.id;
+// Fila de mensagens do WhatsApp. Modelo horizontal: todos veem todas as
+// cobranças, de quem para quem. O envio de verdade é do n8n (bloco C);
+// até lá, as mensagens ficam "Na fila".
+export default async function Cobrancas({ searchParams }: PageProps<"/cobrancas">) {
+  const conta = await exigirConta();
+  const sp = await searchParams;
+  const escopo: Escopo = sp.de === "comigo" || sp.de === "minhas" ? sp.de : "todas";
+  const status = typeof sp.status === "string" && sp.status in ROTULO_STATUS ? (sp.status as Status) : "";
 
-  function rodar() {
-    const r = rodarCobrancasAgora(ignorarJanela);
-    setRetorno(
-      r.novas.length
-        ? `${r.novas.length} mensagem(ns) nova(s) na fila.${r.jaExistiam ? ` ${r.jaExistiam} já tinham sido geradas hoje e não se repetiram.` : ""}`
-        : `Nenhuma mensagem nova. ${r.jaExistiam} cobrança(s) de hoje já estavam na fila: rodar de novo não duplica nada.`
-    );
-  }
-
-  const doEscopo = mensagens.filter((m) => escopo === "todas" || m.destinatarioId === eu || m.autorId === eu);
-  const lista = doEscopo.filter((m) => !filtro || m.status === filtro);
+  const todas = await listarMensagens(obterBanco());
+  const doEscopo = todas.filter(
+    (m) => escopo === "todas" || (escopo === "comigo" ? m.destinatario.id === conta.id : m.autor?.id === conta.id)
+  );
+  const lista = doEscopo.filter((m) => !status || m.status === status);
+  const link = (de: Escopo, st: Status | "") => {
+    const q = new URLSearchParams();
+    if (de !== "todas") q.set("de", de);
+    if (st) q.set("status", st);
+    const s = q.toString();
+    return s ? `/cobrancas?${s}` : "/cobrancas";
+  };
 
   return (
     <div className="flex flex-col gap-6">
       <TituloPagina
         chapeu="Cobranças"
         titulo="Mensagens no WhatsApp"
-        subtitulo="Automáticas e feitas por colegas, todas no mesmo lugar. No sistema real o n8n envia; aqui o envio é simulado."
+        subtitulo="Cobranças feitas por colegas e avisos automáticos, todos no mesmo lugar."
       />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-        <div className="flex flex-col gap-4 min-w-0">
-          <div className="dl-panel flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <Botao variant="primary" onClick={rodar}>
-                Rodar cobranças automáticas
-              </Botao>
-              <label className="flex items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" checked={ignorarJanela} onChange={(e) => setIgnorarJanela(e.target.checked)} className="accent-[var(--brand)]" />
-                Ignorar janela de envio (só pra demo)
-              </label>
-            </div>
-            <p className="text-xs text-ink-subtle">
-              Agora {dentroDaJanela() ? "está" : "não está"} dentro da janela de envio ({JANELA_INICIO}h às {JANELA_FIM}h). Rode duas vezes seguidas para ver que nada se repete.
-            </p>
-            {retorno && <p className="text-sm font-semibold text-success">{retorno}</p>}
-          </div>
-
+        <div className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3">
-            <Segmentado
-              rotulo="De quem"
-              valor={escopo}
-              onChange={setEscopo}
-              opcoes={[
-                { valor: "todas", rotulo: "Toda a equipe" },
-                { valor: "minhas", rotulo: "Comigo" },
-              ]}
-            />
+            <div className="dl-seg" role="group" aria-label="De quem">
+              {(Object.keys(ESCOPOS) as Escopo[]).map((e) => (
+                <Link key={e} href={link(e, status)} className="dl-seg-opt" aria-pressed={escopo === e}>
+                  {ESCOPOS[e]}
+                </Link>
+              ))}
+            </div>
             <div className="flex flex-wrap gap-1.5">
-              {(["", "enviado", "pendente", "falhou", "ignorado"] as const).map((s) => (
-                <button
-                  key={s || "todas"}
-                  onClick={() => setFiltro(s)}
-                  className="dl-nav-link"
-                  aria-current={filtro === s ? "page" : undefined}
-                >
+              {(["", "pendente", "enviado", "falhou", "ignorado"] as const).map((s) => (
+                <Link key={s || "todas"} href={link(escopo, s)} className="dl-nav-link" aria-current={status === s ? "page" : undefined}>
                   {s ? ROTULO_STATUS[s] : "Todas"} ({s ? doEscopo.filter((m) => m.status === s).length : doEscopo.length})
-                </button>
+                </Link>
               ))}
             </div>
           </div>
@@ -141,39 +121,16 @@ export default function Cobrancas() {
         </div>
 
         <aside className="flex flex-col gap-4">
+          <PausarCobrancas pausada={conta.cobrancaPausada} semWhatsapp={!conta.telefoneWhatsapp.trim()} />
           <div className="dl-panel text-sm">
-            <p className="dl-eyebrow mb-2">Regras automáticas</p>
-            <ul className="flex flex-col gap-1.5 text-ink-muted">
-              <li>Aviso quando alguém recebe uma tarefa, dizendo quem pediu</li>
-              <li>Lembrete na véspera do prazo</li>
-              <li>Cobrança diária enquanto estiver vencida</li>
-              <li>Depois de {DIAS_PARA_AVISAR_QUEM_PEDIU} dias vencida, quem pediu é avisado</li>
-              <li>Nada para tarefa concluída, arquivada, na triagem, bloqueada ou sem dono</li>
-              <li>Envio só entre {JANELA_INICIO}h e {JANELA_FIM}h</li>
+            <p className="dl-eyebrow mb-2">Como funciona</p>
+            <ul className="flex list-disc flex-col gap-1.5 pl-4 text-ink-muted">
+              <li>Qualquer pessoa cobra qualquer tarefa de outra, pelo botão “Cobrar” na tarefa. Uma por tarefa, por pessoa, por dia.</li>
+              <li>Automáticas: aviso quando alguém recebe uma tarefa, lembrete na véspera do prazo, cobrança diária enquanto estiver vencida e, depois de alguns dias, aviso a quem pediu.</li>
+              <li>Mensagens só saem em horário comercial; fora dele esperam na fila.</li>
+              <li>Quem pausou ou não cadastrou WhatsApp não recebe; fica registrado na tarefa.</li>
+              <li>Se o envio falhar, o sistema tenta mais duas vezes; depois aparece aqui como “Falhou”.</li>
             </ul>
-            <p className="dl-eyebrow mt-4 mb-2">Cobrança de colega</p>
-            <p className="text-ink-muted">
-              Qualquer pessoa cobra qualquer tarefa de outra, o Ítalo incluído, pelo botão verde na tarefa. Uma vez por dia por tarefa.
-            </p>
-          </div>
-
-          <div className="dl-panel">
-            <p className="dl-eyebrow mb-3">Receber no WhatsApp</p>
-            <ul className="flex flex-col gap-2">
-              {usuarios.filter((u) => u.ativo).map((u) => (
-                <li key={u.id} className="flex items-center justify-between text-sm">
-                  <span className="font-semibold">{u.nome}</span>
-                  {u.id === eu ? (
-                    <button onClick={() => alternarPausa(u.id)} className={`dl-status ${u.cobrancaPausada ? "dl-status-arquivada" : "dl-status-concluida"}`}>
-                      {u.cobrancaPausada ? "Pausado" : "Ativo"}
-                    </button>
-                  ) : (
-                    <span className={`dl-status ${u.cobrancaPausada ? "dl-status-arquivada" : "dl-status-concluida"}`}>{u.cobrancaPausada ? "Pausado" : "Ativo"}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 text-xs text-ink-subtle">Cada pessoa pausa só as próprias mensagens.</p>
           </div>
         </aside>
       </div>

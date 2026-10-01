@@ -4,9 +4,8 @@ import type {
   Prioridade,
   RegraCobranca,
   Tarefa,
-  Usuario,
 } from "./types";
-import { diferencaDias, hojeISO } from "./datas";
+import { diferencaDias, hojeISO, horaAtual } from "./datas";
 
 export const ROTULO_ESTADO: Record<Estado, string> = {
   triagem: "Triagem",
@@ -32,6 +31,8 @@ export const ROTULO_REGRA: Record<RegraCobranca, string> = {
   escalonamento: "Aviso a quem pediu",
   cobranca_manual: "Cobrança de colega",
   resumo_diario: "Resumo diário",
+  redefinir_senha: "Link de nova senha",
+  revisao: "Revisão",
 };
 
 export const COLUNAS_QUADRO: Estado[] = [
@@ -52,7 +53,10 @@ export const ORDEM_PRIORIDADE: Record<Prioridade, number> = {
 
 // ---- Máquina de estados (seção 4 do spec) ----
 
-export function transicoesPermitidas(t: Tarefa, frente: Frente | undefined): Estado[] {
+export function transicoesPermitidas(
+  t: Pick<Tarefa, "estado" | "estadoAnterior">,
+  frente: Pick<Frente, "usaRevisao"> | undefined | null
+): Estado[] {
   const usaRevisao = frente?.usaRevisao ?? false;
   switch (t.estado) {
     case "triagem":
@@ -60,9 +64,10 @@ export function transicoesPermitidas(t: Tarefa, frente: Frente | undefined): Est
     case "a_fazer":
       return ["em_andamento", "bloqueada"];
     case "em_andamento":
+      // Qualquer demanda pode ir pra revisão; na frente que usa revisão, é obrigatório.
       return usaRevisao
         ? ["em_revisao", "bloqueada", "a_fazer"]
-        : ["concluida", "bloqueada", "a_fazer"];
+        : ["concluida", "em_revisao", "bloqueada", "a_fazer"];
     case "em_revisao":
       return ["concluida", "em_andamento"];
     case "bloqueada":
@@ -77,6 +82,7 @@ export function transicoesPermitidas(t: Tarefa, frente: Frente | undefined): Est
 export function rotuloTransicao(de: Estado, para: Estado): string {
   if (de === "bloqueada") return "Desbloquear";
   if (de === "em_revisao" && para === "em_andamento") return "Pedir ajustes";
+  if (de === "em_revisao" && para === "concluida") return "Aprovar e concluir";
   if (de === "concluida") return "Reabrir";
   if (de === "triagem") return "Liberar para execução";
   if (para === "a_fazer") return "Voltar para a fazer";
@@ -90,7 +96,7 @@ export function rotuloTransicao(de: Estado, para: Estado): string {
 }
 
 // Uma tarefa só sai da triagem com dono e prazo (seção 4, passo 3).
-export function pendenciasParaLiberar(t: Tarefa): string[] {
+export function pendenciasParaLiberar(t: Pick<Tarefa, "responsavelId" | "prazo" | "frenteId">): string[] {
   const faltas: string[] = [];
   if (!t.responsavelId) faltas.push("responsável");
   if (!t.prazo) faltas.push("prazo");
@@ -99,48 +105,38 @@ export function pendenciasParaLiberar(t: Tarefa): string[] {
 }
 
 // ---- Permissões ----
-// Modelo horizontal (decisão de 24/09): toda conta pode ver, pedir, atribuir,
-// editar, mudar etapa e cobrar qualquer tarefa, de qualquer pessoa — o Ítalo
-// incluído. O que separa as pessoas é o histórico (quem pediu, quem cobrou),
-// não o poder.
-//
-// Exceção única: acesso. Remover (e restaurar) o acesso de alguém é só do
-// dono — o Ítalo — e de quem ele autorizar. Ninguém remove o acesso do dono
-// nem tira a permissão dele, e só o dono dá ou tira essa permissão.
-
-export const DONO_ID = "u-italo";
-
-export function ehDono(u: Usuario | null | undefined): boolean {
-  return u?.id === DONO_ID;
-}
-
-export function podeGerenciarAcessos(u: Usuario | null | undefined): boolean {
-  return Boolean(u && u.ativo && (ehDono(u) || u.gerenciaAcessos));
-}
-
-export function podeDelegarAcessos(u: Usuario | null | undefined): boolean {
-  return ehDono(u) && Boolean(u?.ativo);
-}
+// Modelo horizontal: toda conta vê, pede, edita, muda etapa e cobra qualquer
+// tarefa. A única exceção (acesso) fica em lib/servidor/permissoes.ts.
 
 // ---- Situação de prazo ----
 
-export function estaAtiva(t: Tarefa): boolean {
+// As funções de prazo e etapa pedem só os campos que usam: servem tanto para
+// as linhas do banco quanto para as visões das telas.
+type ComPrazo = Pick<Tarefa, "estado" | "prazo"> & { prazoHora?: string | null };
+
+export function estaAtiva(t: Pick<Tarefa, "estado">): boolean {
   return t.estado !== "concluida" && t.estado !== "arquivada";
 }
 
-export function estaVencida(t: Tarefa, hoje = hojeISO()): boolean {
-  return estaAtiva(t) && t.prazo !== null && diferencaDias(hoje, t.prazo) < 0;
+// Com hora, vence naquela hora do dia; sem hora, só no dia seguinte.
+export function estaVencida(t: ComPrazo, hoje = hojeISO(), agora = horaAtual()): boolean {
+  if (!estaAtiva(t) || t.prazo === null) return false;
+  const dif = diferencaDias(hoje, t.prazo);
+  return dif < 0 || (dif === 0 && Boolean(t.prazoHora) && agora >= t.prazoHora!);
 }
 
-export function venceEmBreve(t: Tarefa, hoje = hojeISO()): boolean {
+export function venceEmBreve(t: ComPrazo, hoje = hojeISO()): boolean {
   if (!estaAtiva(t) || !t.prazo) return false;
   const dif = diferencaDias(hoje, t.prazo);
   return dif >= 0 && dif <= 1;
 }
 
-export function ordenarPorUrgencia(a: Tarefa, b: Tarefa): number {
-  const pa = a.prazo ?? "9999-12-31";
-  const pb = b.prazo ?? "9999-12-31";
+type ComUrgencia = Pick<Tarefa, "prazo" | "prioridade"> & { prazoHora?: string | null };
+
+export function ordenarPorUrgencia(a: ComUrgencia, b: ComUrgencia): number {
+  // Sem hora conta como fim do dia.
+  const pa = `${a.prazo ?? "9999-12-31"} ${a.prazoHora ?? "24:00"}`;
+  const pb = `${b.prazo ?? "9999-12-31"} ${b.prazoHora ?? "24:00"}`;
   if (pa !== pb) return pa < pb ? -1 : 1;
   return ORDEM_PRIORIDADE[a.prioridade] - ORDEM_PRIORIDADE[b.prioridade];
 }

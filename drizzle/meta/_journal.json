@@ -15,6 +15,48 @@
       "when": 1790293457330,
       "tag": "0001_protecoes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790443183547,
+      "tag": "0002_modelos_checklist",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790443243298,
+      "tag": "0003_evento_anexo",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790627701072,
+      "tag": "0004_redefinir_senha",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790629679222,
+      "tag": "0005_regra_revisao",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790631385991,
+      "tag": "0006_prazo_hora",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790884037296,
+      "tag": "0007_silky_oracle",
+      "breakpoints": true
     }
   ]
 }

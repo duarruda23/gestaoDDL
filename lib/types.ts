@@ -67,6 +67,7 @@ export interface Tarefa {
   motivoBloqueio: string | null;
   prioridade: Prioridade;
   prazo: string | null; // YYYY-MM-DD
+  prazoHora?: string | null; // HH:MM, opcional
   origem: Origem;
   versao: number;
   checklist: ChecklistItem[];
@@ -112,6 +113,7 @@ export interface Proposta {
   responsavelId: string | null;
   envolvidosIds: string[];
   prazo: string | null;
+  prazoHora?: string | null;
   prioridade: Prioridade;
   subtarefas: string[];
   evidencias: Evidencia[];
@@ -147,7 +149,9 @@ export type RegraCobranca =
   | "vencida"
   | "escalonamento"
   | "cobranca_manual"
-  | "resumo_diario";
+  | "resumo_diario"
+  | "redefinir_senha"
+  | "revisao";
 
 export type StatusEnvio = "pendente" | "enviado" | "falhou" | "ignorado";
 
