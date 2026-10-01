@@ -57,6 +57,13 @@
       "when": 1790884037296,
       "tag": "0007_silky_oracle",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790887410731,
+      "tag": "0008_magenta_lord_hawal",
+      "breakpoints": true
     }
   ]
 }
