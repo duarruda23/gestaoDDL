@@ -4,6 +4,7 @@ import type { Banco } from "@/db";
 import { eventosTarefa, mensagens, tarefas, usuarios } from "@/db/schema";
 import { estaAtiva } from "@/lib/regras";
 import { descreverPrazo, diferencaDias, hojeISO, somarDias } from "@/lib/datas";
+import { vencimentoAtingido } from "@/lib/recorrencia/calendario";
 import { enfileirar, lerConfig, mensagensDoDia, primeiroNome } from "./fila";
 
 // Cobrança manual (início do bloco C). Modelo horizontal: qualquer pessoa
@@ -23,7 +24,8 @@ export async function cobrarTarefa(
   autor: Autor,
   tarefaId: string,
   recado: string,
-  hoje = hojeISO()
+  hoje = hojeISO(),
+  agora = new Date()
 ): Promise<Resultado<{ status: "pendente" | "ignorado"; destinatario: string }>> {
   const recadoLimpo = recado.trim();
   if (recadoLimpo.length > LIMITE_RECADO) return { ok: false, motivo: `O recado pode ter até ${LIMITE_RECADO} caracteres.` };
@@ -34,6 +36,8 @@ export async function cobrarTarefa(
     if (!t) return { ok: false, motivo: "Tarefa não encontrada." };
     if (!t.responsavelId) return { ok: false, motivo: "A tarefa não tem responsável. Defina quem faz antes de cobrar." };
     if (!estaAtiva(t)) return { ok: false, motivo: "A tarefa já foi concluída ou arquivada." };
+    if (t.serieRecorrenteId && (!t.dataProgramadaLocal || !vencimentoAtingido(t.dataProgramadaLocal, t.prazoHora, agora)))
+      return { ok: false, motivo: "Esta ocorrência só pode ser cobrada após o vencimento." };
     if (t.responsavelId === autor.id) return { ok: false, motivo: "A tarefa é sua. Atualize o andamento em vez de se cobrar." };
 
     const [dest] = await tx.select().from(usuarios).where(eq(usuarios.id, t.responsavelId)).limit(1);

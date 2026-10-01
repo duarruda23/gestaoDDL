@@ -1,7 +1,8 @@
-import { and, asc, eq, lt, lte, or } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { Banco } from "@/db";
-import { mensagens, usuarios } from "@/db/schema";
+import { mensagens, tarefas, usuarios } from "@/db/schema";
 import { FUSO } from "@/lib/datas";
+import { dataHoraRecife } from "@/lib/recorrencia/calendario";
 import { lerConfig, primeiroNome } from "./fila";
 
 // C2 — o que o n8n pode fazer, e só isso (spec, seção 7: operações
@@ -42,6 +43,7 @@ export async function reservarMensagens(
 ): Promise<{ mensagens: MensagemParaEnviar[]; motivo?: string }> {
   const config = await lerConfig(banco);
   const hora = horaEmSP(agora);
+  const local = dataHoraRecife(agora);
   // Janela de silêncio vale para todas as cobranças, inclusive a manual: quem
   // cobra às 23h tem a mensagem entregue de manhã. A única exceção é o link de
   // redefinição de senha, que a própria pessoa pediu agora: sai a qualquer
@@ -67,13 +69,22 @@ export async function reservarMensagens(
       })
       .from(mensagens)
       .innerJoin(usuarios, eq(usuarios.id, mensagens.destinatarioId))
+      .leftJoin(tarefas, eq(tarefas.id, mensagens.tarefaId))
       .where(
         and(
           or(
             and(eq(mensagens.status, "pendente"), lte(mensagens.agendadaPara, agora)),
             and(eq(mensagens.status, "enviando"), lt(mensagens.reservadaAte, agora))
           ),
-          motivoParado ? eq(mensagens.regra, "redefinir_senha") : undefined
+          motivoParado ? eq(mensagens.regra, "redefinir_senha") : undefined,
+          or(
+            isNull(tarefas.serieRecorrenteId),
+            lt(tarefas.dataProgramadaLocal, local.data),
+            and(
+              eq(tarefas.dataProgramadaLocal, local.data),
+              sql`${tarefas.prazoHora} IS NOT NULL AND ${tarefas.prazoHora}::time <= ${local.hora}::time`
+            )
+          )
         )
       )
       .orderBy(asc(mensagens.agendadaPara))

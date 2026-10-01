@@ -3,6 +3,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { Banco } from "@/db";
 import { tarefas, usuarios } from "@/db/schema";
 import { diferencaDias, formatarHora, hojeISO, horaAtual, somarDias } from "@/lib/datas";
+import { vencimentoAtingido } from "@/lib/recorrencia/calendario";
 import { enfileirar, lerConfig, primeiroNome, type NovaMensagem } from "./fila";
 
 // Cobranças automáticas (bloco C, seção 7 do spec). O n8n chama isto em
@@ -22,7 +23,7 @@ export interface ResultadoRodada {
   jaExistiam: number;
 }
 
-export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), agora = horaAtual()): Promise<ResultadoRodada> {
+export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), agora = horaAtual(), instante = new Date()): Promise<ResultadoRodada> {
   const config = await lerConfig(banco);
   const resultado: ResultadoRodada = { novas: 0, ignoradas: 0, jaExistiam: 0 };
   if (!config?.ativa) return resultado;
@@ -35,6 +36,8 @@ export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), 
       estado: tarefas.estado,
       prazo: tarefas.prazo,
       prazoHora: tarefas.prazoHora,
+      serieRecorrenteId: tarefas.serieRecorrenteId,
+      dataProgramadaLocal: tarefas.dataProgramadaLocal,
       responsavelId: tarefas.responsavelId,
       criadorId: tarefas.criadorId,
       respNome: resp.nome,
@@ -54,6 +57,7 @@ export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), 
 
   const candidatas: NovaMensagem[] = [];
   for (const t of lista) {
+    if (t.serieRecorrenteId && (!t.dataProgramadaLocal || !vencimentoAtingido(t.dataProgramadaLocal, t.prazoHora, instante))) continue;
     const dif = diferencaDias(hoje, t.prazo!);
     const nome = primeiroNome(t.respNome);
     const pediu = primeiroNome(t.criadorNome);
