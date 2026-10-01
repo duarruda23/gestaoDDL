@@ -16,7 +16,7 @@ describe("banco de recorrência", () => {
     const [frente] = await banco.insert(frentes).values({ nome: "Eventos" }).returning();
     const [serie] = await banco.insert(seriesRecorrentes).values({
       titulo: "Publicar agenda", frenteId: frente.id, responsavelId: responsavel.id,
-      criadoPorId: autor.id, frequencia: "semanal", diasSemana: [2], inicioEm: "2026-10-06",
+      criadoPorId: autor.id, frequencia: "semanal", diasSemana: [2], inicioEm: "2026-10-06", gerarDesde: "2026-10-06",
     }).returning();
     const ocorrencia = {
       titulo: serie.titulo, frenteId: frente.id, responsavelId: responsavel.id,

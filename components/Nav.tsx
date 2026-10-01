@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from "motion/react";
-import { ChartColumn, Ellipsis, House, Inbox, LayoutGrid, LogOut, MessageCircle, Moon, Plus, Sun, Users } from "lucide-react";
+import { CalendarDays, ChartColumn, Ellipsis, House, Inbox, LayoutGrid, LogOut, MessageCircle, Moon, Plus, Sun, Users } from "lucide-react";
 import { ROTAS, rotaPronta } from "@/lib/rotas";
 import { Avatar } from "./ui";
 
@@ -66,6 +66,7 @@ function projetar(velocidade: number, desaceleracao = 0.998): number {
 const ITENS_MAIS = [
   { href: "/triagem", rotulo: "Triagem", icone: Inbox },
   { href: "/cobrancas", rotulo: "Cobranças", icone: MessageCircle },
+  { href: "/series", rotulo: "Séries recorrentes", icone: CalendarDays },
   { href: "/equipe", rotulo: "Equipe e acessos", icone: Users },
 ];
 

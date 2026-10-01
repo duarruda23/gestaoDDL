@@ -107,6 +107,7 @@ describe("rotas públicas", () => {
     expect(rotaPublica("/")).toBe(false);
     expect(rotaPublica("/quadro")).toBe(false);
     expect(rotaPublica("/equipe")).toBe(false);
+    expect(rotaPublica("/series")).toBe(false);
     expect(rotaPublica("/api/interpretar")).toBe(false);
     expect(rotaPublica("/entrarfalso")).toBe(false);
   });

@@ -7,6 +7,7 @@ import type { PropostaSalva } from "@/lib/servidor/pedidos-nucleo";
 import { confirmarPropostaAcao, descartarPropostaAcao, interpretarAcao } from "@/app/nova/acoes";
 import { EditorProposta, descreverFaltas, type PessoaEditor } from "../EditorProposta";
 import { FormNovaTarefa } from "../tarefa/FormNovaTarefa";
+import { FormSerie } from "../series/FormSerie";
 import { Aviso, Botao, Segmentado, TituloPagina } from "../ui";
 
 const EXEMPLOS = [
@@ -28,6 +29,7 @@ export function Pedir({
   abertas,
   temIA,
   modelos,
+  hoje,
 }: {
   pessoas: PessoaEditor[];
   frentes: { id: string; nome: string }[];
@@ -35,8 +37,9 @@ export function Pedir({
   abertas: PropostaSalva[];
   temIA: boolean;
   modelos: { id: string; nome: string; itens: string[]; frenteId: string | null }[];
+  hoje: string;
 }) {
-  const [modo, setModo] = useState<"texto" | "formulario">("texto");
+  const [modo, setModo] = useState<"texto" | "formulario" | "recorrente">("texto");
   const [texto, setTexto] = useState("");
   const [interpretando, iniciarInterpretacao] = useTransition();
   const [salvando, iniciarSalvar] = useTransition();
@@ -111,11 +114,13 @@ export function Pedir({
           opcoes={[
             { valor: "texto", rotulo: "Descrever em texto" },
             { valor: "formulario", rotulo: "Formulário" },
+            { valor: "recorrente", rotulo: "Repetir tarefa" },
           ]}
         />
       </div>
 
       {modo === "formulario" && <FormNovaTarefa pessoas={pessoas} frentes={frentes} euId={euId} modelos={modelos} />}
+      {modo === "recorrente" && <FormSerie pessoas={pessoas} frentes={frentes} hoje={hoje} />}
 
       {modo === "texto" && (
         <div className="flex flex-col gap-6">
