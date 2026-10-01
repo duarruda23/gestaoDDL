@@ -36,7 +36,7 @@ export async function cobrarTarefa(
     if (!t) return { ok: false, motivo: "Tarefa não encontrada." };
     if (!t.responsavelId) return { ok: false, motivo: "A tarefa não tem responsável. Defina quem faz antes de cobrar." };
     if (!estaAtiva(t)) return { ok: false, motivo: "A tarefa já foi concluída ou arquivada." };
-    if (t.serieRecorrenteId && (!t.dataProgramadaLocal || !vencimentoAtingido(t.dataProgramadaLocal, t.prazoHora, agora)))
+    if (t.serieRecorrenteId && (!t.prazo || !vencimentoAtingido(t.prazo, t.prazoHora, agora)))
       return { ok: false, motivo: "Esta ocorrência só pode ser cobrada após o vencimento." };
     if (t.responsavelId === autor.id) return { ok: false, motivo: "A tarefa é sua. Atualize o andamento em vez de se cobrar." };
 

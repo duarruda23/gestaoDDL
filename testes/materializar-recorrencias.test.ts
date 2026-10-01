@@ -59,6 +59,20 @@ describe("materializador de recorrências", () => {
     expect((await reservarMensagens(banco, 10, noPrazo)).mensagens).toHaveLength(0);
     expect((await ocorrencias(r.id)).map((x) => x.dataProgramadaLocal)).toEqual(["2026-10-06"]);
   });
+  it("reagendar o prazo da ocorrência bloqueia até a nova data, inclusive na reserva", async () => {
+    await banco.update(usuarios).set({ telefoneWhatsapp: "81999990000" }).where(eq(usuarios.id, responsavel.id));
+    const id = await serie({ frequencia: "semanal", intervalo: 1, inicioEm: "2026-10-06", diasSemana: [2] });
+    await materializarSerie(banco, id, instante("2026-10-06"));
+    const [t] = await ocorrencias(id);
+    const diaOriginal = new Date("2026-10-06T18:00:00Z");
+    expect(await cobrarTarefa(banco, ator, t.id, "", "2026-10-06", diaOriginal)).toMatchObject({ ok: true });
+    await banco.update(tarefas).set({ prazo: "2026-10-07" }).where(eq(tarefas.id, t.id));
+    await banco.update(mensagens).set({ agendadaPara: diaOriginal });
+    expect(await cobrarTarefa(banco, ator, t.id, "", "2026-10-06", diaOriginal)).toMatchObject({ ok: false });
+    expect(await gerarCobrancasAutomaticas(banco, "2026-10-06", "15:00", diaOriginal)).toMatchObject({ novas: 0 });
+    expect((await reservarMensagens(banco, 10, diaOriginal)).mensagens).toHaveLength(0);
+    expect((await reservarMensagens(banco, 10, new Date("2026-10-07T18:00:00Z"))).mensagens).toHaveLength(1);
+  });
   it("cria só no dia de terça, repete com segurança e não enfileira mensagens", async () => {
     const id = await serie({ frequencia: "semanal", intervalo: 1, inicioEm: "2026-10-06", diasSemana: [2] });
     expect(await materializarSerie(banco, id, instante("2026-10-06"))).toMatchObject({ criadas: 1, requerAtencao: false });

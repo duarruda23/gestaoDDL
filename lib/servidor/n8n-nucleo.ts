@@ -79,9 +79,9 @@ export async function reservarMensagens(
           motivoParado ? eq(mensagens.regra, "redefinir_senha") : undefined,
           or(
             isNull(tarefas.serieRecorrenteId),
-            lt(tarefas.dataProgramadaLocal, local.data),
+            lt(tarefas.prazo, local.data),
             and(
-              eq(tarefas.dataProgramadaLocal, local.data),
+              eq(tarefas.prazo, local.data),
               sql`${tarefas.prazoHora} IS NOT NULL AND ${tarefas.prazoHora}::time <= ${local.hora}::time`
             )
           )

@@ -37,7 +37,6 @@ export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), 
       prazo: tarefas.prazo,
       prazoHora: tarefas.prazoHora,
       serieRecorrenteId: tarefas.serieRecorrenteId,
-      dataProgramadaLocal: tarefas.dataProgramadaLocal,
       responsavelId: tarefas.responsavelId,
       criadorId: tarefas.criadorId,
       respNome: resp.nome,
@@ -57,7 +56,7 @@ export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), 
 
   const candidatas: NovaMensagem[] = [];
   for (const t of lista) {
-    if (t.serieRecorrenteId && (!t.dataProgramadaLocal || !vencimentoAtingido(t.dataProgramadaLocal, t.prazoHora, instante))) continue;
+    if (t.serieRecorrenteId && (!t.prazo || !vencimentoAtingido(t.prazo, t.prazoHora, instante))) continue;
     const dif = diferencaDias(hoje, t.prazo!);
     const nome = primeiroNome(t.respNome);
     const pediu = primeiroNome(t.criadorNome);

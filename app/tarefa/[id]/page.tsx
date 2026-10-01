@@ -73,7 +73,7 @@ export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]"
   const arquivada = t.estado === "arquivada";
   // Modelo horizontal: qualquer um cobra quem faz, desde que não seja a própria pessoa.
   const podeCobrar = !!t.responsavel && t.responsavel.id !== conta.id && estaAtiva(t) &&
-    (!serie || (!!serie.data && vencimentoAtingido(serie.data, t.prazoHora, new Date())));
+    (!serie || (!!t.prazo && vencimentoAtingido(t.prazo, t.prazoHora, new Date())));
   const ultimaCobranca = t.mensagens.find((m) => m.regra === "cobranca_manual");
 
   return (
