@@ -75,15 +75,17 @@ O n8n não acessa o banco: usa rotas `POST` com o cabeçalho
 
 | Rota | Quando chamar | Corpo | Resposta |
 |---|---|---|---|
-| `/api/n8n/materializar` | antes de `/api/n8n/gerar`, após ativar E4 | — | `{ resultados, falhas }` — cria apenas tarefas com data programada iniciada em Recife; nunca envia mensagem. Retorna 500 se alguma série falhar, sem impedir as demais |
-| `/api/n8n/gerar` | de hora em hora, das 8h às 18h | — | `{ novas, ignoradas, jaExistiam }` — cria lembretes de véspera, cobranças de vencidas e avisos a quem pediu; repetir no mesmo dia não duplica |
+| `/api/n8n/materializar` | chamada manual para diagnóstico ou recuperação | — | `{ resultados, falhas }` — cria apenas tarefas com data programada iniciada em Recife; nunca envia mensagem. Retorna 500 se alguma série falhar, sem impedir as demais |
+| `/api/n8n/gerar` | de hora em hora, das 8h às 18h | — | `{ novas, ignoradas, jaExistiam, recorrencias: { resultados, falhas }, textosApagados }` — materializa primeiro, depois cria cobranças elegíveis; responde 207 se alguma série falhar, mas continua cobrando tarefas avulsas |
 | `/api/n8n/resumo` | uma vez por dia, às 8h | — | `{ novas, ignoradas, jaExistiam }` — resumo da manhã pra cada pessoa com algo em aberto |
 | `/api/n8n/reservar` | a cada 1–2 min | `{ "limite": 20 }` (opcional) | `{ mensagens: [{ id, telefone, nome, texto }], motivo? }` — já reservadas por 5 min; fora da janela (8h–19h) volta vazio |
 | `/api/n8n/resultado` | depois de cada envio | `{ id, ok, idProvedor?, erro? }` ou `{ resultados: [...] }` | falha volta pra fila (5 e 10 min depois) e na 3ª vira "Falhou" |
 
-O endpoint `materializar` fica disponível no E3, mas a chamada agendada só
-deve ser ligada junto com o E4, quando a cobrança manual e a fila tiverem
-a checagem explícita de vencimento para ocorrências recorrentes.
+O job horário existente chama apenas `/api/n8n/gerar`: o backend materializa as
+ocorrências antes das cobranças. A reserva confere de novo o vencimento local
+das ocorrências e não entrega mensagens anteriores ao prazo. Para ativar em
+homologação, aplicar primeiro as migrações 0007 e 0008 após revisão do SQL,
+configurar um destinatário de teste e conferir a resposta do job e da reserva.
 
 `telefone` já vem só com dígitos e DDI (ex.: `5581999990000`), pronto pro
 campo `number` da Evolution API. O `texto` usa `*negrito*` do WhatsApp.

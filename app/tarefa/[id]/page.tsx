@@ -7,6 +7,7 @@ import { exigirConta } from "@/lib/servidor/dal";
 import { detalharTarefa, listarPessoasEFrentes } from "@/lib/servidor/consultas";
 import { ROTULO_ESTADO, ROTULO_REGRA, estaAtiva } from "@/lib/regras";
 import { formatarDataHora, formatarPrazoHistorico } from "@/lib/datas";
+import { vencimentoAtingido } from "@/lib/recorrencia/calendario";
 import type { RegraCobranca } from "@/lib/types";
 import { AcoesTarefa } from "@/components/tarefa/AcoesTarefa";
 import { ChecklistEditavel } from "@/components/tarefa/ChecklistEditavel";
@@ -71,7 +72,8 @@ export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]"
   ]);
   const arquivada = t.estado === "arquivada";
   // Modelo horizontal: qualquer um cobra quem faz, desde que não seja a própria pessoa.
-  const podeCobrar = !!t.responsavel && t.responsavel.id !== conta.id && estaAtiva(t);
+  const podeCobrar = !!t.responsavel && t.responsavel.id !== conta.id && estaAtiva(t) &&
+    (!serie || (!!t.prazo && vencimentoAtingido(t.prazo, t.prazoHora, new Date())));
   const ultimaCobranca = t.mensagens.find((m) => m.regra === "cobranca_manual");
 
   return (

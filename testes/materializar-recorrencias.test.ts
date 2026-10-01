@@ -5,6 +5,9 @@ import type { Banco } from "@/db";
 import { frentes, mensagens, seriesRecorrentes, tarefas, usuarios } from "@/db/schema";
 import { criarSerie, mudarEstadoSerie, type DadosSerie } from "@/lib/servidor/series-nucleo";
 import { materializarRecorrencias, materializarSerie } from "@/lib/servidor/materializar-recorrencias";
+import { cobrarTarefa } from "@/lib/servidor/cobranca-nucleo";
+import { gerarCobrancasAutomaticas } from "@/lib/servidor/regras-cobranca";
+import { reservarMensagens } from "@/lib/servidor/n8n-nucleo";
 import { criarBancoDeTeste, criarConta, limparBanco } from "./banco";
 
 let banco: Banco;
@@ -33,6 +36,43 @@ async function serie(regra: DadosSerie["regra"]) {
 const ocorrencias = (id: string) => banco.select().from(tarefas).where(eq(tarefas.serieRecorrenteId, id));
 
 describe("materializador de recorrências", () => {
+  it("só cobra a ocorrência às 09h e confere o vencimento de novo na reserva", async () => {
+    await banco.update(usuarios).set({ telefoneWhatsapp: "81999990000" }).where(eq(usuarios.id, responsavel.id));
+    const r = await criarSerie(banco, ator, {
+      titulo: "Agenda", descricao: "", frenteId, responsavelId: responsavel.id,
+      prioridade: "media", horaVencimento: "09:00",
+      regra: { frequencia: "semanal", intervalo: 1, inicioEm: "2026-10-06", diasSemana: [2] },
+    }, new Date("2026-10-06T11:00:00Z"));
+    if (!r.ok) throw new Error(r.motivo);
+    await materializarSerie(banco, r.id, new Date("2026-10-06T11:00:00Z"));
+    const [t] = await ocorrencias(r.id);
+    const antes = new Date("2026-10-06T11:59:59Z");
+    const noPrazo = new Date("2026-10-06T12:00:00Z");
+    expect(await cobrarTarefa(banco, ator, t.id, "", "2026-10-06", antes)).toMatchObject({ ok: false });
+    expect(await gerarCobrancasAutomaticas(banco, "2026-10-06", "08:59", antes)).toMatchObject({ novas: 0 });
+    expect(await banco.select().from(mensagens)).toHaveLength(0);
+    expect(await cobrarTarefa(banco, ator, t.id, "", "2026-10-06", noPrazo)).toMatchObject({ ok: true });
+    expect(await gerarCobrancasAutomaticas(banco, "2026-10-06", "09:00", noPrazo)).toMatchObject({ novas: 1 });
+    await banco.update(mensagens).set({ agendadaPara: antes });
+    expect((await reservarMensagens(banco, 10, antes)).mensagens).toHaveLength(0);
+    expect((await reservarMensagens(banco, 10, noPrazo)).mensagens).toHaveLength(2);
+    expect((await reservarMensagens(banco, 10, noPrazo)).mensagens).toHaveLength(0);
+    expect((await ocorrencias(r.id)).map((x) => x.dataProgramadaLocal)).toEqual(["2026-10-06"]);
+  });
+  it("reagendar o prazo da ocorrência bloqueia até a nova data, inclusive na reserva", async () => {
+    await banco.update(usuarios).set({ telefoneWhatsapp: "81999990000" }).where(eq(usuarios.id, responsavel.id));
+    const id = await serie({ frequencia: "semanal", intervalo: 1, inicioEm: "2026-10-06", diasSemana: [2] });
+    await materializarSerie(banco, id, instante("2026-10-06"));
+    const [t] = await ocorrencias(id);
+    const diaOriginal = new Date("2026-10-06T18:00:00Z");
+    expect(await cobrarTarefa(banco, ator, t.id, "", "2026-10-06", diaOriginal)).toMatchObject({ ok: true });
+    await banco.update(tarefas).set({ prazo: "2026-10-07" }).where(eq(tarefas.id, t.id));
+    await banco.update(mensagens).set({ agendadaPara: diaOriginal });
+    expect(await cobrarTarefa(banco, ator, t.id, "", "2026-10-06", diaOriginal)).toMatchObject({ ok: false });
+    expect(await gerarCobrancasAutomaticas(banco, "2026-10-06", "15:00", diaOriginal)).toMatchObject({ novas: 0 });
+    expect((await reservarMensagens(banco, 10, diaOriginal)).mensagens).toHaveLength(0);
+    expect((await reservarMensagens(banco, 10, new Date("2026-10-07T18:00:00Z"))).mensagens).toHaveLength(1);
+  });
   it("cria só no dia de terça, repete com segurança e não enfileira mensagens", async () => {
     const id = await serie({ frequencia: "semanal", intervalo: 1, inicioEm: "2026-10-06", diasSemana: [2] });
     expect(await materializarSerie(banco, id, instante("2026-10-06"))).toMatchObject({ criadas: 1, requerAtencao: false });
