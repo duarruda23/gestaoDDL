@@ -27,6 +27,7 @@ export default async function PaginaSerie({ params }: PageProps<"/series/[id]">)
   ]);
   if (!serie) notFound();
   const nomes = new Map(pessoas.map((p) => [p.id, p.nome]));
+  const abertas = ocorrencias.filter((t) => !["concluida", "arquivada"].includes(t.estado)).length;
   const base = { inicioEm: serie.inicioEm, fimEm: serie.fimEm, intervalo: serie.intervalo };
   const regra: RegraRecorrencia = serie.frequencia === "diaria" ? { ...base, frequencia: "diaria" }
     : serie.frequencia === "semanal" || serie.frequencia === "personalizada" ? { ...base, frequencia: serie.frequencia, diasSemana: serie.diasSemana ?? [] }
@@ -36,6 +37,8 @@ export default async function PaginaSerie({ params }: PageProps<"/series/[id]">)
     <div className="max-w-3xl">
       <Link href="/series" className="dl-link mb-3 inline-block">Voltar às séries</Link>
       <TituloPagina chapeu="Série recorrente" titulo={serie.titulo} subtitulo={`Estado: ${serie.estado}. Criada por ${nomes.get(serie.criadoPorId) ?? "conta antiga"}.`} />
+      {serie.requerAtencao ? <p className="mb-4 text-sm font-semibold text-danger" role="status">A série precisa de atenção. Resolva uma tarefa atrasada ou escolha um responsável ativo.</p>
+        : abertas >= 2 ? <p className="mb-4 text-sm font-semibold text-warning" role="status">Há {abertas} tarefas abertas nesta série.</p> : null}
       <FormSerie
         pessoas={equipe.pessoas.map(({ id, nome }) => ({ id, nome }))}
         frentes={equipe.frentes.map(({ id, nome }) => ({ id, nome }))}
