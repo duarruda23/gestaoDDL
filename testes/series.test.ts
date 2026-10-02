@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
-import { eventosSerie, eventosTarefa, frentes, seriesRecorrentes, tarefas } from "@/db/schema";
-import { criarSerie, editarSerie, mudarEstadoSerie, type DadosSerie } from "@/lib/servidor/series-nucleo";
+import { eventosSerie, eventosTarefa, frentes, mensagens, seriesRecorrentes, tarefas } from "@/db/schema";
+import { criarSerie, editarSerie, mudarEstadoSerie, reagendarAbertasSerie, type DadosSerie } from "@/lib/servidor/series-nucleo";
 import { criarBancoDeTeste, criarConta } from "./banco";
 
 describe("ciclo de vida da série recorrente", () => {
@@ -68,6 +68,51 @@ describe("ciclo de vida da série recorrente", () => {
     };
     expect(await criarSerie(banco, ator, dados, new Date("2026-10-01T12:00:00Z"))).toMatchObject({ ok: false });
     expect(await criarSerie(banco, ator, { ...dados, responsavelId: ator.id, regra: { ...dados.regra, intervalo: 0 } }, new Date("2026-10-01T12:00:00Z"))).toMatchObject({ ok: false });
+  });
+
+  it("reagenda só abertas, cancela fila antiga e preserva data original e concluídas", async () => {
+    const { banco } = ctx;
+    const ator = await criarConta(banco);
+    const responsavel = await criarConta(banco);
+    const [frente] = await banco.insert(frentes).values({ nome: "Reagendamento" }).returning();
+    const criada = await criarSerie(banco, ator, {
+      titulo: "Agenda", descricao: "", frenteId: frente.id, responsavelId: responsavel.id,
+      prioridade: "media", horaVencimento: "09:00",
+      regra: { frequencia: "semanal", intervalo: 1, inicioEm: "2026-10-06", diasSemana: [2] },
+    }, new Date("2026-10-06T12:00:00Z"));
+    if (!criada.ok) throw new Error(criada.motivo);
+    const [aberta] = await banco.insert(tarefas).values({
+      titulo: "Agenda", frenteId: frente.id, responsavelId: responsavel.id, criadorId: ator.id,
+      estado: "a_fazer", prazo: "2026-10-06", prazoHora: "09:00",
+      serieRecorrenteId: criada.id, chaveOcorrencia: "2026-10-06", dataProgramadaLocal: "2026-10-06",
+      geradaEm: new Date("2026-10-06T03:00:00Z"), origemOcorrencia: "automatica",
+    }).returning();
+    const [concluida] = await banco.insert(tarefas).values({
+      titulo: "Antiga", frenteId: frente.id, responsavelId: responsavel.id, criadorId: ator.id,
+      estado: "concluida", prazo: "2026-09-29", serieRecorrenteId: criada.id,
+      chaveOcorrencia: "2026-09-29", dataProgramadaLocal: "2026-09-29",
+      geradaEm: new Date("2026-09-29T03:00:00Z"), origemOcorrencia: "automatica",
+    }).returning();
+    const [m] = await banco.insert(mensagens).values({
+      chave: `${aberta.id}|manual|2026-10-06`, tarefaId: aberta.id, regra: "cobranca_manual",
+      autorId: ator.id, destinatarioId: responsavel.id, texto: "Prazo antigo", status: "enviando",
+    }).returning();
+    const agora = new Date("2026-10-07T12:00:00Z");
+    expect(await reagendarAbertasSerie(banco, ator, criada.id, 1, "2026-10-09", "10:00", "Mudou o evento", agora))
+      .toMatchObject({ ok: false, motivo: "Há uma mensagem em envio. Aguarde a confirmação antes de reagendar." });
+    await banco.update(mensagens).set({ status: "pendente" }).where(eq(mensagens.id, m.id));
+    expect(await reagendarAbertasSerie(banco, ator, criada.id, 1, "2026-10-07", "10:00", "Mudou o evento", agora)).toMatchObject({ ok: false });
+    expect(await reagendarAbertasSerie(banco, ator, criada.id, 1, "2026-10-09", "10:00", "Mudou o evento", agora))
+      .toEqual({ ok: true, versao: 2, alteradas: 1 });
+    const [nova] = await banco.select().from(tarefas).where(eq(tarefas.id, aberta.id));
+    const [antiga] = await banco.select().from(tarefas).where(eq(tarefas.id, concluida.id));
+    const [cancelada] = await banco.select().from(mensagens).where(eq(mensagens.id, m.id));
+    expect(nova).toMatchObject({ prazo: "2026-10-09", prazoHora: "10:00", dataProgramadaLocal: "2026-10-06", versao: 2 });
+    expect(antiga.prazo).toBe("2026-09-29");
+    expect(cancelada.status).toBe("ignorado");
+    expect(await banco.select().from(eventosTarefa).where(eq(eventosTarefa.tarefaId, aberta.id))).toHaveLength(1);
+    expect((await banco.select().from(eventosSerie).where(eq(eventosSerie.serieId, criada.id))).at(-1)?.tipo).toBe("reagendamento_abertas");
+    expect(await reagendarAbertasSerie(banco, ator, criada.id, 1, "2026-10-10", null, "Outro", agora)).toMatchObject({ ok: false });
   });
 
   it("reverte a coluna da migração 0008 no banco descartável", async () => {
