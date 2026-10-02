@@ -4,6 +4,7 @@ import { carregarEquipe, propostasAbertas } from "@/lib/servidor/pedidos-nucleo"
 import { escolherProvedor } from "@/lib/provedor-ia";
 import { Pedir } from "@/components/pedir/Pedir";
 import { listarModelos } from "@/lib/servidor/modelos-nucleo";
+import { hojeISO } from "@/lib/datas";
 
 export const metadata = { title: "Pedir · Gestão Donas de Loja" };
 
@@ -21,6 +22,7 @@ export default async function PaginaPedir() {
       abertas={abertas}
       temIA={escolherProvedor() !== null}
       modelos={modelos.map((m) => ({ id: m.id, nome: m.nome, itens: m.itens, frenteId: m.frente?.id ?? null }))}
+      hoje={hojeISO()}
     />
   );
 }

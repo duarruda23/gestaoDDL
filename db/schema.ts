@@ -232,6 +232,7 @@ export const seriesRecorrentes = pgTable(
     mesAno: smallint("mes_ano"),
     diaAno: smallint("dia_ano"),
     inicioEm: date("inicio_em").notNull(),
+    gerarDesde: date("gerar_desde").notNull(),
     fimEm: date("fim_em"),
     horaVencimento: text("hora_vencimento"),
     timezone: text("timezone").notNull().default("America/Recife"),

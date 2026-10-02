@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { obterBanco } from "@/db";
+import { seriesRecorrentes, tarefas } from "@/db/schema";
 import { exigirConta } from "@/lib/servidor/dal";
 import { detalharTarefa, listarPessoasEFrentes } from "@/lib/servidor/consultas";
 import { ROTULO_ESTADO, ROTULO_REGRA, estaAtiva } from "@/lib/regras";
@@ -61,7 +63,12 @@ export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]"
   const banco = obterBanco();
   const t = await detalharTarefa(banco, id);
   if (!t) notFound();
-  const [{ pessoas, frentes }, modelos, anexos] = await Promise.all([listarPessoasEFrentes(banco), listarModelos(banco), listarAnexos(banco, t.id)]);
+  const [{ pessoas, frentes }, modelos, anexos, [serie]] = await Promise.all([
+    listarPessoasEFrentes(banco), listarModelos(banco), listarAnexos(banco, t.id),
+    banco.select({ id: seriesRecorrentes.id, titulo: seriesRecorrentes.titulo, estado: seriesRecorrentes.estado, data: tarefas.dataProgramadaLocal })
+      .from(tarefas).innerJoin(seriesRecorrentes, eq(seriesRecorrentes.id, tarefas.serieRecorrenteId))
+      .where(eq(tarefas.id, t.id)).limit(1),
+  ]);
   const arquivada = t.estado === "arquivada";
   // Modelo horizontal: qualquer um cobra quem faz, desde que não seja a própria pessoa.
   const podeCobrar = !!t.responsavel && t.responsavel.id !== conta.id && estaAtiva(t);
@@ -82,6 +89,7 @@ export default async function DetalheTarefa({ params }: PageProps<"/tarefa/[id]"
           {t.origem === "ia" && <EtiquetaIA />}
         </div>
         <h1 className="dl-heading">{t.titulo}</h1>
+        {serie && <p className="text-sm text-ink-muted">Ocorrência de {serie.data?.split("-").reverse().join("/")} · <Link className="dl-link" href={`/series/${serie.id}`}>Série: {serie.titulo}</Link> ({serie.estado})</p>}
         {t.descricao && <p className="max-w-2xl whitespace-pre-wrap text-ink-muted">{t.descricao}</p>}
       </header>
 
