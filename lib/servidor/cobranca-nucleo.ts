@@ -32,7 +32,7 @@ export async function cobrarTarefa(
   if (!FORMATO_UUID.test(tarefaId)) return { ok: false, motivo: "Tarefa não encontrada." };
 
   return banco.transaction(async (tx) => {
-    const [t] = await tx.select().from(tarefas).where(eq(tarefas.id, tarefaId)).limit(1);
+    const [t] = await tx.select().from(tarefas).where(eq(tarefas.id, tarefaId)).for("update").limit(1);
     if (!t) return { ok: false, motivo: "Tarefa não encontrada." };
     if (!t.responsavelId) return { ok: false, motivo: "A tarefa não tem responsável. Defina quem faz antes de cobrar." };
     if (!estaAtiva(t)) return { ok: false, motivo: "A tarefa já foi concluída ou arquivada." };

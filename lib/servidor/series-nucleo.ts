@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Banco } from "@/db";
-import { eventosSerie, eventosTarefa, frentes, seriesRecorrentes, tarefas, usuarios } from "@/db/schema";
+import { eventosSerie, eventosTarefa, frentes, mensagens, seriesRecorrentes, tarefas, usuarios } from "@/db/schema";
 import { dataHoraRecife, datasProgramadas, validarRegra, type RegraRecorrencia } from "@/lib/recorrencia/calendario";
 import { FORMATO_HORA } from "@/lib/datas";
 
@@ -146,6 +146,54 @@ export async function mudarEstadoSerie(
     if (!atual) return erro("A série mudou em outra sessão. Recarregue a página.");
     await tx.insert(eventosSerie).values({ serieId: id, tipo: acao, atorId: ator.id, antes: anterior, depois: atual });
     return { ok: true };
+  });
+}
+
+// A data programada identifica a ocorrência e nunca muda. Esta ação altera
+// somente o prazo de tarefas abertas, após confirmação explícita na tela.
+export async function reagendarAbertasSerie(
+  banco: Banco, ator: Ator, id: string, versao: number,
+  novoPrazo: string, novaHora: string | null, motivo: string, agora = new Date()
+): Promise<Resultado<{ versao: number; alteradas: number }>> {
+  if (!UUID.test(id) || !Number.isSafeInteger(versao) || versao < 1) return erro("Série inválida.");
+  const dataValida = /^\d{4}-\d{2}-\d{2}$/.test(novoPrazo) &&
+    !Number.isNaN(new Date(`${novoPrazo}T00:00:00Z`).getTime()) &&
+    new Date(`${novoPrazo}T00:00:00Z`).toISOString().slice(0, 10) === novoPrazo;
+  if (!dataValida || novoPrazo <= dataHoraRecife(agora).data) return erro("Escolha uma data futura, a partir de amanhã.");
+  if (novaHora && !FORMATO_HORA.test(novaHora)) return erro("Hora de vencimento inválida.");
+  if (!motivo.trim() || motivo.trim().length > 500) return erro("Informe um motivo de até 500 caracteres.");
+  return banco.transaction(async (tx) => {
+    const [serie] = await tx.select().from(seriesRecorrentes).where(eq(seriesRecorrentes.id, id)).for("update").limit(1);
+    if (!serie) return erro("Série não encontrada.");
+    if (serie.versao !== versao) return erro("A série mudou em outra sessão. Recarregue a página.");
+    const abertas = await tx.select().from(tarefas)
+      .where(and(eq(tarefas.serieRecorrenteId, id), inArray(tarefas.estado, [...ABERTAS])))
+      .for("update");
+    if (!abertas.length) return erro("Não há tarefas abertas para reagendar.");
+    const fila = await tx.select().from(mensagens)
+      .where(and(inArray(mensagens.tarefaId, abertas.map((t) => t.id)), inArray(mensagens.status, ["pendente", "enviando", "falhou"])))
+      .for("update");
+    if (fila.some((m) => m.status === "enviando"))
+      return erro("Há uma mensagem em envio. Aguarde a confirmação antes de reagendar.");
+    const alteradas = abertas.filter((t) => t.prazo !== novoPrazo || t.prazoHora !== novaHora);
+    if (!alteradas.length) return erro("As tarefas abertas já têm esse prazo.");
+    for (const t of alteradas) {
+      await tx.update(tarefas).set({ prazo: novoPrazo, prazoHora: novaHora,
+        versao: sql`${tarefas.versao} + 1`, atualizadoEm: agora }).where(eq(tarefas.id, t.id));
+      await tx.insert(eventosTarefa).values({ tarefaId: t.id, tipo: "prazo", atorId: ator.id,
+        antes: `${t.prazo ?? "sem data"}${t.prazoHora ? ` ${t.prazoHora}` : ""}`,
+        depois: `${novoPrazo}${novaHora ? ` ${novaHora}` : ""} — ${motivo.trim()}` });
+    }
+    const ids = new Set(alteradas.map((t) => t.id));
+    const cancelar = fila.filter((m) => m.tarefaId && ids.has(m.tarefaId));
+    if (cancelar.length) await tx.update(mensagens).set({ status: "ignorado", motivo: "Prazo reagendado; mensagem antiga cancelada.", reservadaAte: null })
+      .where(inArray(mensagens.id, cancelar.map((m) => m.id)));
+    const [atual] = await tx.update(seriesRecorrentes).set({ versao: versao + 1, atualizadaEm: agora })
+      .where(and(eq(seriesRecorrentes.id, id), eq(seriesRecorrentes.versao, versao))).returning();
+    await tx.insert(eventosSerie).values({ serieId: id, tipo: "reagendamento_abertas", atorId: ator.id,
+      antes: { tarefas: alteradas.map((t) => ({ id: t.id, prazo: t.prazo, hora: t.prazoHora })) },
+      depois: { prazo: novoPrazo, hora: novaHora, motivo: motivo.trim(), tarefas: alteradas.map((t) => t.id), mensagensCanceladas: cancelar.length } });
+    return { ok: true, versao: atual.versao, alteradas: alteradas.length };
   });
 }
 

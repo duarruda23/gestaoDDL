@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { obterBanco } from "@/db";
 import { exigirConta } from "@/lib/servidor/dal";
-import { criarSerie, editarSerie, mudarEstadoSerie, type DadosSerie } from "@/lib/servidor/series-nucleo";
+import { criarSerie, editarSerie, mudarEstadoSerie, reagendarAbertasSerie, type DadosSerie } from "@/lib/servidor/series-nucleo";
 
 const base = {
   intervalo: z.number().int().min(1).max(365),
@@ -54,5 +54,19 @@ export async function mudarEstadoSerieAcao(id: string, versao: number, acao: "pa
   if (!["pausar", "retomar", "encerrar"].includes(acao) || typeof motivo !== "string") return { ok: false as const, motivo: "Ação inválida." };
   const resultado = await mudarEstadoSerie(obterBanco(), ator, id, versao, acao, motivo);
   if (resultado.ok) { revalidatePath("/series"); revalidatePath(`/series/${id}`); }
+  return resultado;
+}
+
+export async function reagendarAbertasSerieAcao(id: string, versao: number, prazo: string, hora: string | null, motivo: string) {
+  const ator = await exigirConta();
+  const validos = z.object({ id: z.uuid(), versao: z.number().int().positive(), prazo: z.iso.date(),
+    hora: z.string().regex(/^\d{2}:\d{2}$/).nullable(), motivo: z.string().min(1).max(500) })
+    .safeParse({ id, versao, prazo, hora, motivo });
+  if (!validos.success) return { ok: false as const, motivo: "Confira a data, a hora e o motivo." };
+  const resultado = await reagendarAbertasSerie(obterBanco(), ator, id, versao, prazo, hora, motivo);
+  if (resultado.ok) {
+    revalidatePath(`/series/${id}`); revalidatePath("/series");
+    revalidatePath("/quadro"); revalidatePath("/cobrancas");
+  }
   return resultado;
 }

@@ -55,6 +55,7 @@ export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), 
     );
 
   const candidatas: NovaMensagem[] = [];
+  const porId = new Map(lista.map((t) => [t.id, t]));
   for (const t of lista) {
     if (t.serieRecorrenteId && (!t.prazo || !vencimentoAtingido(t.prazo, t.prazoHora, instante))) continue;
     const dif = diferencaDias(hoje, t.prazo!);
@@ -100,7 +101,17 @@ export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), 
   }
 
   for (const c of candidatas) {
-    const r = await enfileirar(banco, c, hoje);
+    const original = c.tarefaId ? porId.get(c.tarefaId) : undefined;
+    const r = original?.serieRecorrenteId
+      ? await banco.transaction(async (tx) => {
+        const [atual] = await tx.select().from(tarefas).where(eq(tarefas.id, original.id)).for("update").limit(1);
+        if (!atual || atual.prazo !== original.prazo || atual.prazoHora !== original.prazoHora ||
+            atual.estado !== original.estado || atual.responsavelId !== original.responsavelId ||
+            atual.titulo !== original.titulo || atual.criadorId !== original.criadorId) return null;
+        return enfileirar(tx, c, hoje);
+      })
+      : await enfileirar(banco, c, hoje);
+    if (!r) continue;
     if (!r.inserida) resultado.jaExistiam++;
     else if (r.status === "ignorado") resultado.ignoradas++;
     else resultado.novas++;
