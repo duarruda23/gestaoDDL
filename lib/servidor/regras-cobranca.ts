@@ -3,6 +3,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { Banco } from "@/db";
 import { tarefas, usuarios } from "@/db/schema";
 import { diferencaDias, formatarHora, hojeISO, horaAtual, somarDias } from "@/lib/datas";
+import { vencimentoAtingido } from "@/lib/recorrencia/calendario";
 import { enfileirar, lerConfig, primeiroNome, type NovaMensagem } from "./fila";
 
 // Cobranças automáticas (bloco C, seção 7 do spec). O n8n chama isto em
@@ -22,7 +23,7 @@ export interface ResultadoRodada {
   jaExistiam: number;
 }
 
-export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), agora = horaAtual()): Promise<ResultadoRodada> {
+export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), agora = horaAtual(), instante = new Date()): Promise<ResultadoRodada> {
   const config = await lerConfig(banco);
   const resultado: ResultadoRodada = { novas: 0, ignoradas: 0, jaExistiam: 0 };
   if (!config?.ativa) return resultado;
@@ -35,6 +36,7 @@ export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), 
       estado: tarefas.estado,
       prazo: tarefas.prazo,
       prazoHora: tarefas.prazoHora,
+      serieRecorrenteId: tarefas.serieRecorrenteId,
       responsavelId: tarefas.responsavelId,
       criadorId: tarefas.criadorId,
       respNome: resp.nome,
@@ -53,7 +55,9 @@ export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), 
     );
 
   const candidatas: NovaMensagem[] = [];
+  const porId = new Map(lista.map((t) => [t.id, t]));
   for (const t of lista) {
+    if (t.serieRecorrenteId && (!t.prazo || !vencimentoAtingido(t.prazo, t.prazoHora, instante))) continue;
     const dif = diferencaDias(hoje, t.prazo!);
     const nome = primeiroNome(t.respNome);
     const pediu = primeiroNome(t.criadorNome);
@@ -97,7 +101,17 @@ export async function gerarCobrancasAutomaticas(banco: Banco, hoje = hojeISO(), 
   }
 
   for (const c of candidatas) {
-    const r = await enfileirar(banco, c, hoje);
+    const original = c.tarefaId ? porId.get(c.tarefaId) : undefined;
+    const r = original?.serieRecorrenteId
+      ? await banco.transaction(async (tx) => {
+        const [atual] = await tx.select().from(tarefas).where(eq(tarefas.id, original.id)).for("update").limit(1);
+        if (!atual || atual.prazo !== original.prazo || atual.prazoHora !== original.prazoHora ||
+            atual.estado !== original.estado || atual.responsavelId !== original.responsavelId ||
+            atual.titulo !== original.titulo || atual.criadorId !== original.criadorId) return null;
+        return enfileirar(tx, c, hoje);
+      })
+      : await enfileirar(banco, c, hoje);
+    if (!r) continue;
     if (!r.inserida) resultado.jaExistiam++;
     else if (r.status === "ignorado") resultado.ignoradas++;
     else resultado.novas++;

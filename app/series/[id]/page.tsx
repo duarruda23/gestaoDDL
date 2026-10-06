@@ -6,6 +6,7 @@ import { eventosSerie, seriesRecorrentes, tarefas, usuarios } from "@/db/schema"
 import { exigirConta } from "@/lib/servidor/dal";
 import { carregarEquipe } from "@/lib/servidor/pedidos-nucleo";
 import { FormSerie } from "@/components/series/FormSerie";
+import { ReagendarAbertas } from "@/components/series/ReagendarAbertas";
 import { TituloPagina } from "@/components/ui";
 import { hojeISO, formatarDataHora } from "@/lib/datas";
 import type { RegraRecorrencia } from "@/lib/recorrencia/calendario";
@@ -49,6 +50,7 @@ export default async function PaginaSerie({ params }: PageProps<"/series/[id]">)
           prioridade: serie.prioridade, horaVencimento: serie.horaVencimento, regra,
         }}
       />
+      {abertas > 0 && <ReagendarAbertas key={serie.versao} serieId={serie.id} versao={serie.versao} abertas={abertas} hoje={hojeISO()} />}
       <section className="dl-panel mt-6 !p-5">
         <h2 className="mb-3 text-lg font-semibold">Ocorrências criadas</h2>
         {ocorrencias.length ? <ul className="flex flex-col gap-2">{ocorrencias.map((t) =>
