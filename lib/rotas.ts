@@ -6,6 +6,7 @@ export interface Rota {
   href: string;
   rotulo: string;
   pronta: boolean;
+  gestor?: boolean; // só aparece para quem gerencia acessos (dono e gestores)
 }
 
 export const ROTAS: Rota[] = [
@@ -17,8 +18,15 @@ export const ROTAS: Rota[] = [
   { href: "/painel", rotulo: "Painel", pronta: true }, // A6 (25/09)
   { href: "/cobrancas", rotulo: "Cobranças", pronta: true }, // cobrança manual (25/09); envio pelo n8n no bloco C
   { href: "/equipe", rotulo: "Equipe", pronta: true }, // A4/A5 (25/09)
+  { href: "/campanhas", rotulo: "Campanhas", pronta: true, gestor: true }, // dashboard por funil
 ];
 
 export function rotaPronta(href: string): boolean {
   return ROTAS.some((r) => r.href === href && r.pronta);
+}
+
+// Rota visível para esta conta? As marcadas `gestor` exigem permissão de gestor.
+export function rotaVisivel(href: string, gestor: boolean): boolean {
+  const r = ROTAS.find((x) => x.href === href);
+  return Boolean(r && r.pronta && (!r.gestor || gestor));
 }
