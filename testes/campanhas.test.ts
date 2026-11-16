@@ -234,7 +234,7 @@ describe("db/dashboard-italo/001-views-funil.sql", () => {
       create table campaign_daily_metrics (id uuid primary key default gen_random_uuid(), campaign_id uuid, date date, impressions bigint, clicks bigint, spend numeric, reach bigint, updated_at timestamptz default now());
       create table sales (id uuid primary key default gen_random_uuid(), product_name text, status text, currency text, amount numeric, occurred_at timestamptz, buyer_email text);
     `);
-    let sql = readFileSync("db/dashboard-italo/001-views-funil.sql", "utf8");
+    const sql = readFileSync("db/dashboard-italo/001-views-funil.sql", "utf8");
     // Roda o arquivo inteiro, inclusive a seção 6 (RLS, revokes e a role leitura_gestao).
     await pg.exec(sql);
 
