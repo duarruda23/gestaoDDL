@@ -224,6 +224,10 @@ textarea.dl-input { min-height: 88px; resize: vertical; }
 /* ---- StatTile ---- */
 .dl-stat { background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-2xl); padding: var(--space-4); min-width: 132px; }
 .dl-stat-value { margin: 0; font-size: 32px; line-height: 36px; font-weight: 900; font-variant-numeric: tabular-nums; color: var(--ink-subtle); }
+/* Cartões de valor em reais (aba Campanhas): o número acompanha a largura do cartão
+   (container query), então "R$ 129.339,50" não é cortado em celular nem em tela larga. */
+.dl-kpi { container-type: inline-size; min-width: 0; }
+.dl-kpi-valor { font-size: clamp(14px, 10.5cqw, 28px); line-height: 1.25; white-space: nowrap; }
 .dl-stat-label { margin: 4px 0 0; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ink-muted); }
 .dl-stat-danger .dl-stat-value { color: var(--danger); }
 .dl-stat-warning .dl-stat-value { color: var(--warning); }
