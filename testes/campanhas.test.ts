@@ -236,7 +236,7 @@ describe("db/dashboard-italo/001-views-funil.sql", () => {
     `);
     let sql = readFileSync("db/dashboard-italo/001-views-funil.sql", "utf8");
     // PGlite não tem o gerenciamento de roles do Supabase: roda tudo menos a seção 6.
-    sql = sql.slice(0, sql.indexOf("-- 6. Role")) + "commit;";
+    sql = sql.slice(0, sql.indexOf("-- 6. Fechar o acesso")) + "commit;";
     await pg.exec(sql);
 
     await pg.exec(`

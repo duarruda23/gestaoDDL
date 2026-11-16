@@ -1,7 +1,8 @@
 -- Dashboard de campanhas por funil: camada de leitura para a gestão Donas de Loja.
 --
 -- ONDE RODAR: no SQL Editor do Supabase "Dashboard-italo" (ref dhcasfqszrcftgwffere).
--- ESTE ARQUIVO NÃO FOI APLICADO. O Eduardo revisa e cola; antes, testar numa branch.
+-- APLICADO EM PRODUÇÃO em 16/11/2026 (migrações gestao_views_funil e gestao_funcoes_search_path).
+-- A role leitura_gestao foi criada SEM senha: falta o Eduardo definir (ver o PR #8).
 -- Só cria objetos novos (tabelas mapa_*, config_imposto_meta, views v_gestao_*, role
 -- leitura_gestao). Não altera nem apaga nenhuma tabela existente.
 -- Rollback: db/dashboard-italo/001-rollback.sql.
@@ -125,6 +126,10 @@ returns text language sql immutable as $$
   select nullif(initcap(replace((regexp_match(p_nome, '^\[L[0-9]+\]_\[PRESENCIAL\]_\[([^\]]+)\]'))[1], '-', ' ')), '');
 $$;
 
+alter function public.gestao_funil_da_campanha(text, text) set search_path = public, pg_temp;
+alter function public.gestao_funil_do_produto(text) set search_path = public, pg_temp;
+alter function public.gestao_cidade_da_campanha(text) set search_path = public, pg_temp;
+
 -- 5. Views que o app lê ----------------------------------------------------------------------
 create or replace view public.v_gestao_campanhas as
 select
@@ -175,7 +180,27 @@ select
   (select max(updated_at) from public.campaign_daily_metrics) as ultima_sincronizacao_meta,
   (select max(occurred_at) from public.sales) as ultima_venda;
 
--- 6. Role só de leitura -----------------------------------------------------------------------
+-- 6. Fechar o acesso público e criar a role só de leitura ------------------------------------
+-- No Supabase, objetos novos em public ficam legíveis pelas chaves anon/authenticated da API.
+-- Estes objetos têm vendas (comprador em hash) e regras internas: só a role leitura_gestao lê.
+alter table public.gestao_funis enable row level security;
+alter table public.mapa_campanha_funil enable row level security;
+alter table public.mapa_produto_funil enable row level security;
+alter table public.config_imposto_meta enable row level security;
+
+do $$
+declare r text;
+begin
+  foreach r in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = r) then
+      execute format('revoke all on table public.gestao_funis, public.mapa_campanha_funil, public.mapa_produto_funil, public.config_imposto_meta, public.v_gestao_campanhas, public.v_gestao_funil_dia, public.v_gestao_vendas, public.v_gestao_imposto, public.v_gestao_frescor from %I', r);
+      execute format('revoke all on function public.gestao_funil_da_campanha(text, text), public.gestao_funil_do_produto(text), public.gestao_cidade_da_campanha(text) from %I', r);
+    end if;
+  end loop;
+end $$;
+revoke all on function public.gestao_funil_da_campanha(text, text), public.gestao_funil_do_produto(text), public.gestao_cidade_da_campanha(text) from public;
+
+-- Role só de leitura:
 -- A senha NÃO fica aqui: o Eduardo define com ALTER ROLE ... PASSWORD no SQL Editor e
 -- coloca a URL em DASHBOARD_ITALO_DATABASE_URL, só no .env da VPS.
 do $$
@@ -188,7 +213,6 @@ end $$;
 grant usage on schema public to leitura_gestao;
 revoke all on all tables in schema public from leitura_gestao;
 grant select on
-  public.gestao_funis,
   public.v_gestao_campanhas,
   public.v_gestao_funil_dia,
   public.v_gestao_vendas,
