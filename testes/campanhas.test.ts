@@ -234,9 +234,8 @@ describe("db/dashboard-italo/001-views-funil.sql", () => {
       create table campaign_daily_metrics (id uuid primary key default gen_random_uuid(), campaign_id uuid, date date, impressions bigint, clicks bigint, spend numeric, reach bigint, updated_at timestamptz default now());
       create table sales (id uuid primary key default gen_random_uuid(), product_name text, status text, currency text, amount numeric, occurred_at timestamptz, buyer_email text);
     `);
-    let sql = readFileSync("db/dashboard-italo/001-views-funil.sql", "utf8");
-    // PGlite não tem o gerenciamento de roles do Supabase: roda tudo menos a seção 6.
-    sql = sql.slice(0, sql.indexOf("-- 6. Fechar o acesso")) + "commit;";
+    const sql = readFileSync("db/dashboard-italo/001-views-funil.sql", "utf8");
+    // Roda o arquivo inteiro, inclusive a seção 6 (RLS, revokes e a role leitura_gestao).
     await pg.exec(sql);
 
     await pg.exec(`
@@ -301,6 +300,26 @@ describe("db/dashboard-italo/001-views-funil.sql", () => {
       "select count(distinct comprador)::int n from v_gestao_vendas where funil in ('desafio','grupo_vip','mentoria') and status='approved' and valor in (20,10,3000)"
     );
     expect(r.rows[0].n).toBe(1);
+  });
+
+  // Regressão do "permission denied for table mapa_produto_funil" em produção: o app lê com a
+  // role leitura_gestao, que não pode ler as tabelas de regras. As views precisam funcionar
+  // por inteiro com ela (as funções rodam com os direitos do dono).
+  it("a role leitura_gestao lê as views completas, mas não as tabelas de regras", async () => {
+    await pg.exec("set role leitura_gestao");
+    try {
+      const camp = await pg.query<{ funil: string | null }>("select funil from v_gestao_campanhas");
+      expect(camp.rows.some((r) => r.funil === "desafio")).toBe(true);
+      const vendas = await pg.query<{ funil: string | null }>("select funil from v_gestao_vendas");
+      expect(vendas.rows.some((r) => r.funil === "mentoria")).toBe(true);
+      await pg.query("select * from v_gestao_funil_dia");
+      await pg.query("select * from v_gestao_imposto");
+      await pg.query("select * from v_gestao_frescor");
+      await expect(pg.query("select * from mapa_produto_funil")).rejects.toThrow(/permission denied/);
+      await expect(pg.query("select * from sales")).rejects.toThrow(/permission denied/);
+    } finally {
+      await pg.exec("reset role");
+    }
   });
 
   it("de ponta a ponta: lê as views e monta o dashboard", async () => {
