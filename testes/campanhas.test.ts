@@ -2,28 +2,17 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  fatorImposto,
   intervalo,
   lerDados,
   montarDashboard,
   periodoValido,
   type DadosBrutos,
-  type ImpostoConfig,
   type Leitor,
 } from "@/lib/servidor/campanhas-nucleo";
 import { podeVerCampanhas } from "@/lib/servidor/permissoes";
 import { rotaVisivel } from "@/lib/rotas";
 
 const HOJE = "2026-11-16";
-const IMPOSTO: ImpostoConfig = {
-  iss: 0.029,
-  pisCofins: 0.0925,
-  modo: "soma_simples",
-  vigenciaInicio: "2026-01-01",
-  vigenciaFim: null,
-  fonte: "estimativa",
-};
-
 function dados(parcial: Partial<DadosBrutos> = {}): DadosBrutos {
   return {
     funis: [
@@ -36,7 +25,6 @@ function dados(parcial: Partial<DadosBrutos> = {}): DadosBrutos {
     campanhas: [],
     metricas: [],
     vendas: [],
-    imposto: [IMPOSTO],
     frescor: { ultimaMetrica: null, ultimaSincronizacaoMeta: null, ultimaVenda: null },
     ...parcial,
   };
@@ -53,21 +41,6 @@ const venda = (o: Partial<DadosBrutos["vendas"][number]>): DadosBrutos["vendas"]
   ...o,
 });
 
-describe("imposto estimado da Meta", () => {
-  it("soma simples: 1.000 de gasto viram 1.121,50", () => {
-    expect(fatorImposto([IMPOSTO], "2026-11-01")! * 1000).toBeCloseTo(1121.5, 5);
-  });
-  it("cascata multiplica os dois", () => {
-    const f = fatorImposto([{ ...IMPOSTO, modo: "cascata" }], "2026-11-01")!;
-    expect(f).toBeCloseTo(1.029 * 1.0925, 8);
-  });
-  it("sem configuração vigente devolve null", () => {
-    expect(fatorImposto([], "2026-11-01")).toBeNull();
-    expect(fatorImposto([{ ...IMPOSTO, vigenciaFim: "2026-06-30" }], "2026-11-01")).toBeNull();
-    expect(fatorImposto([IMPOSTO], "2025-12-31")).toBeNull();
-  });
-});
-
 describe("período", () => {
   it("aceita só 7, 30 e 90, padrão 30", () => {
     expect(periodoValido("7")).toBe(7);
@@ -81,7 +54,7 @@ describe("período", () => {
 });
 
 describe("montarDashboard", () => {
-  it("separa gasto e receita por funil, com ROAS sobre o gasto com imposto", () => {
+  it("separa gasto e receita por funil; o gasto é exatamente o da API da Meta", () => {
     const d = montarDashboard(
       dados({
         metricas: [
@@ -95,30 +68,33 @@ describe("montarDashboard", () => {
     );
     const desafio = d.funis.find((f) => f.funil === "desafio")!;
     expect(desafio.gasto).toBe(1000);
-    expect(desafio.gastoComImposto).toBeCloseTo(1121.5, 5);
     expect(desafio.vendas).toBe(2);
     expect(desafio.receita).toBe(40);
-    expect(desafio.roas).toBeCloseTo(40 / 1121.5, 6);
-    expect(desafio.cpa).toBeCloseTo(1121.5 / 2, 5);
+    expect(desafio.roas).toBeCloseTo(40 / 1000, 6);
+    expect(desafio.cpa).toBe(500);
     expect(desafio.ctr).toBeCloseTo(2, 5);
     expect(d.total.gasto).toBe(1500);
-    expect(d.cidades).toEqual([{ cidade: "Recife", gasto: 500, gastoComImposto: expect.closeTo(560.75, 5) }]);
+    expect(d.cidades).toEqual([{ cidade: "Recife", gasto: 500 }]);
   });
 
-  it("sem imposto configurado, mostra só o gasto da API e usa ele no ROAS", () => {
+  it("não soma nenhum imposto ao gasto: total, funil, campanha e ROAS usam o valor da Meta", () => {
     const d = montarDashboard(
       dados({
-        imposto: [],
-        metricas: [{ dia: "2026-11-15", metaCampaignId: "1", funil: "desafio", cidade: null, gasto: 100, impressoes: 1000, cliques: 10 }],
+        campanhas: [
+          { metaCampaignId: "1", nome: "[L43]_[VENDAS]_[DESAFIO]", status: "active", objetivo: null, funil: "desafio", cidade: null, gastoTotal: 100, ultimaData: null },
+        ],
+        metricas: [{ dia: "2026-11-15", metaCampaignId: "1", funil: "desafio", cidade: null, gasto: 100.37, impressoes: 1000, cliques: 10 }],
         vendas: [venda({ valor: 50 })],
       }),
       30,
       HOJE
     );
-    const f = d.funis.find((x) => x.funil === "desafio")!;
-    expect(f.gastoComImposto).toBeNull();
-    expect(f.roas).toBeCloseTo(0.5, 6);
-    expect(d.qualidade.impostoConfigurado).toBe(false);
+    expect(d.total.gasto).toBe(100.37);
+    expect(d.funis.find((x) => x.funil === "desafio")!.gasto).toBe(100.37);
+    expect(d.campanhas[0].gastoPeriodo).toBe(100.37);
+    expect(d.funis.find((x) => x.funil === "desafio")!.roas).toBeCloseTo(50 / 100.37, 8);
+    expect(d.serie[0].gasto).toBe(100.37);
+    expect(JSON.stringify(d)).not.toMatch(/[Ii]mposto/);
   });
 
   it("não conta pendente, cancelada nem outra moeda como receita; reembolso fica à parte", () => {
@@ -313,7 +289,6 @@ describe("db/dashboard-italo/001-views-funil.sql", () => {
       const vendas = await pg.query<{ funil: string | null }>("select funil from v_gestao_vendas");
       expect(vendas.rows.some((r) => r.funil === "mentoria")).toBe(true);
       await pg.query("select * from v_gestao_funil_dia");
-      await pg.query("select * from v_gestao_imposto");
       await pg.query("select * from v_gestao_frescor");
       await expect(pg.query("select * from mapa_produto_funil")).rejects.toThrow(/permission denied/);
       await expect(pg.query("select * from sales")).rejects.toThrow(/permission denied/);
@@ -340,7 +315,5 @@ describe("db/dashboard-italo/001-views-funil.sql", () => {
     expect(d.qualidade.campanhasSemFunil.map((c) => c.metaCampaignId)).toEqual(["c4"]);
     expect(d.qualidade.produtosSemFunil.map((p) => p.produto)).toEqual(["Produto Hotmart"]);
     expect(d.etapas[0]).toMatchObject({ base: 1, passaram: 1 });
-    expect(d.qualidade.impostoConfigurado).toBe(true);
-    expect(d.funis.find((f) => f.funil === "desafio")!.gastoComImposto).toBeCloseTo(112.15, 5);
   });
 });

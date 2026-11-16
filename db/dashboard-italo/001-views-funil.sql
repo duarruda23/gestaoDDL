@@ -3,7 +3,7 @@
 -- ONDE RODAR: no SQL Editor do Supabase "Dashboard-italo" (ref dhcasfqszrcftgwffere).
 -- APLICADO EM PRODUÇÃO em 16/11/2026 (migrações gestao_views_funil e gestao_funcoes_search_path).
 -- A role leitura_gestao foi criada SEM senha: falta o Eduardo definir (ver o PR #8).
--- Só cria objetos novos (tabelas mapa_*, config_imposto_meta, views v_gestao_*, role
+-- Só cria objetos novos (tabelas mapa_*, views v_gestao_*, role
 -- leitura_gestao). Não altera nem apaga nenhuma tabela existente.
 -- Rollback: db/dashboard-italo/001-rollback.sql.
 --
@@ -81,23 +81,9 @@ select * from (values
 ) v(padrao, funil, prioridade)
 where not exists (select 1 from public.mapa_produto_funil);
 
--- 3. Imposto estimado da Meta, versionado por vigência --------------------------------
--- Estimativa: gasto da API × (1 + iss + pis_cofins) em 'soma_simples', ou
--- × (1 + iss) × (1 + pis_cofins) em 'cascata'. Ainda não validado em fatura real.
-create table if not exists public.config_imposto_meta (
-  id uuid primary key default gen_random_uuid(),
-  iss numeric(6, 4) not null,
-  pis_cofins numeric(6, 4) not null,
-  modo text not null check (modo in ('soma_simples', 'cascata')),
-  vigencia_inicio date not null,
-  vigencia_fim date,
-  fonte text not null default 'estimativa',
-  criado_em timestamptz not null default now()
-);
-
-insert into public.config_imposto_meta (iss, pis_cofins, modo, vigencia_inicio, fonte)
-select 0.0290, 0.0925, 'soma_simples', date '2026-01-01', 'estimativa (spec dashboard eventos, 01/10/2026)'
-where not exists (select 1 from public.config_imposto_meta);
+-- 3. (removido em 16/11/2026) O imposto estimado da Meta saiu: o painel mostra o gasto exato da
+-- API, igual ao Gerenciador de Anúncios. A tabela config_imposto_meta e a view v_gestao_imposto
+-- foram apagadas do banco pela migração gestao_remove_imposto.
 
 -- 4. Funções de classificação -------------------------------------------------------------
 create or replace function public.gestao_funil_da_campanha(p_nome text, p_meta_id text)
@@ -178,10 +164,6 @@ select
   md5(lower(trim(coalesce(s.buyer_email, s.id::text)))) as comprador
 from public.sales s;
 
-create or replace view public.v_gestao_imposto as
-select iss, pis_cofins, modo, vigencia_inicio, vigencia_fim, fonte
-from public.config_imposto_meta;
-
 create or replace view public.v_gestao_frescor as
 select
   (select max(date) from public.campaign_daily_metrics) as ultima_metrica,
@@ -194,14 +176,13 @@ select
 alter table public.gestao_funis enable row level security;
 alter table public.mapa_campanha_funil enable row level security;
 alter table public.mapa_produto_funil enable row level security;
-alter table public.config_imposto_meta enable row level security;
 
 do $$
 declare r text;
 begin
   foreach r in array array['anon', 'authenticated'] loop
     if exists (select 1 from pg_roles where rolname = r) then
-      execute format('revoke all on table public.gestao_funis, public.mapa_campanha_funil, public.mapa_produto_funil, public.config_imposto_meta, public.v_gestao_campanhas, public.v_gestao_funil_dia, public.v_gestao_vendas, public.v_gestao_imposto, public.v_gestao_frescor from %I', r);
+      execute format('revoke all on table public.gestao_funis, public.mapa_campanha_funil, public.mapa_produto_funil, public.v_gestao_campanhas, public.v_gestao_funil_dia, public.v_gestao_vendas, public.v_gestao_frescor from %I', r);
       execute format('revoke all on function public.gestao_funil_da_campanha(text, text), public.gestao_funil_do_produto(text), public.gestao_cidade_da_campanha(text) from %I', r);
     end if;
   end loop;
@@ -224,7 +205,6 @@ grant select on
   public.v_gestao_campanhas,
   public.v_gestao_funil_dia,
   public.v_gestao_vendas,
-  public.v_gestao_imposto,
   public.v_gestao_frescor
 to leitura_gestao;
 grant execute on function

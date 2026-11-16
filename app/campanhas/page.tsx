@@ -61,18 +61,13 @@ function Escolha({ itens }: { itens: { rotulo: string; ativo: boolean; url: stri
   );
 }
 
-function custoNota(d: Dashboard): string {
-  return d.qualidade.impostoConfigurado
-    ? "Estimativa: gasto da API × (1 + ISS + PIS/COFINS). Não é a fatura da Meta."
-    : "Imposto não configurado ou vencido: mostrando só o gasto da API.";
-}
+const NOTA_GASTO = "Gasto = o valor da Meta, o mesmo do Gerenciador de Anúncios (sem imposto estimado).";
 
 function LinhaFunil({ t, dest }: { t: TotaisFunil; dest?: boolean }) {
-  const gastoMostrado = t.gastoComImposto ?? t.gasto;
   return (
     <tr className={dest ? "font-bold" : undefined}>
       <td className="p-3 font-bold">{t.rotulo}</td>
-      <td className="p-3 text-right tabular-nums">{t.gasto > 0 ? dinheiro(gastoMostrado) : "—"}</td>
+      <td className="p-3 text-right tabular-nums">{t.gasto > 0 ? dinheiro(t.gasto) : "—"}</td>
       <td className="p-3 text-right tabular-nums">{t.vendas ? quantidade(t.vendas) : "—"}</td>
       <td className="p-3 text-right tabular-nums">{t.receita > 0 ? dinheiro(t.receita) : "—"}</td>
       <td className="p-3 text-right tabular-nums">{razaoTexto(t.roas)}</td>
@@ -100,11 +95,10 @@ function CabecalhoFunis() {
 
 function Geral({ d }: { d: Dashboard }) {
   const t = d.total;
-  const gasto = t.gastoComImposto ?? t.gasto;
   return (
     <>
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Kpi rotulo={t.gastoComImposto !== null ? "Gasto com imposto (estim.)" : "Gasto (API)"} valor={dinheiro(gasto)} nota={t.gastoComImposto !== null ? `API: ${dinheiro(t.gasto)}` : undefined} />
+        <Kpi rotulo="Gasto (Meta)" valor={dinheiro(t.gasto)} />
         <Kpi rotulo="Vendas aprovadas" valor={quantidade(t.vendas)} />
         <Kpi rotulo="Receita Hotmart" valor={dinheiro(t.receita)} nota={t.reembolsado > 0 ? `Reembolsos/chargebacks: ${dinheiro(t.reembolsado)}` : undefined} />
         <Kpi rotulo="ROAS" valor={razaoTexto(t.roas)} />
@@ -112,7 +106,7 @@ function Geral({ d }: { d: Dashboard }) {
         <Kpi rotulo="CTR" valor={percentual(t.ctr)} />
         <Kpi rotulo="CPM" valor={dinheiro(t.cpm)} />
       </section>
-      <p className="text-xs text-ink-subtle">{custoNota(d)} Receita e gasto são ligados por produto e por tag da campanha, não por venda.</p>
+      <p className="text-xs text-ink-subtle">{NOTA_GASTO} Receita e gasto são ligados por produto e por tag da campanha, não por venda.</p>
       <section>
         <TituloSecao>Gasto e receita por dia</TituloSecao>
         {d.serie.length ? <GraficoDiario serie={d.serie} /> : <Vazio>Sem dados neste período.</Vazio>}
@@ -126,7 +120,7 @@ function Geral({ d }: { d: Dashboard }) {
                 {d.cidades.map((c) => (
                   <tr key={c.cidade}>
                     <td className="p-3 font-bold">{c.cidade}</td>
-                    <td className="p-3 text-right tabular-nums">{dinheiro(c.gastoComImposto ?? c.gasto)}</td>
+                    <td className="p-3 text-right tabular-nums">{dinheiro(c.gasto)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -162,7 +156,7 @@ function PorFunil({ d }: { d: Dashboard }) {
 
   return (
     <>
-      {bloco("Funis de entrada", entradas, custoNota(d))}
+      {bloco("Funis de entrada", entradas, NOTA_GASTO)}
       <section>
         <TituloSecao>Do Desafio à Mentoria</TituloSecao>
         <p className="mb-2 text-xs text-ink-subtle">
@@ -224,7 +218,7 @@ function Campanhas({ d, funil }: { d: Dashboard; funil?: string }) {
                 <td className="p-3 font-bold break-words max-w-[360px]">{c.nome}</td>
                 <td className="p-3">{c.funilRotulo}</td>
                 <td className="p-3">{c.status === "active" ? "Ativa" : c.status === "paused" ? "Pausada" : c.status}</td>
-                <td className="p-3 text-right tabular-nums">{c.gastoPeriodo > 0 ? dinheiro(c.gastoPeriodoComImposto ?? c.gastoPeriodo) : "—"}</td>
+                <td className="p-3 text-right tabular-nums">{c.gastoPeriodo > 0 ? dinheiro(c.gastoPeriodo) : "—"}</td>
                 <td className="p-3 text-right tabular-nums">{percentual(c.ctr)}</td>
                 <td className="p-3 text-right tabular-nums">{dinheiro(c.cpm)}</td>
                 <td className="p-3 text-right tabular-nums">{dataCurta(c.ultimaData)}</td>
@@ -291,16 +285,6 @@ function Qualidade({ d }: { d: Dashboard }) {
         )}
         <p className="mt-2 text-xs text-ink-subtle">Para classificar, inclua uma regra em <code>mapa_produto_funil</code>.</p>
       </section>
-      <section>
-        <TituloSecao>Imposto estimado da Meta</TituloSecao>
-        <div className="dl-panel text-sm">
-          {q.impostoConfigurado ? (
-            <p>Configurado em <code>config_imposto_meta</code> (ISS + PIS/COFINS), como estimativa. Ainda não conferido em fatura real da Meta.</p>
-          ) : (
-            <p>Sem configuração vigente para parte do período. Os custos aparecem só com o gasto da API.</p>
-          )}
-        </div>
-      </section>
     </>
   );
 }
@@ -355,7 +339,7 @@ export default async function PaginaCampanhas({ searchParams }: PageProps<"/camp
                 id: c.metaCampaignId,
                 nome: c.nome,
                 status: c.status,
-                gasto: c.gastoPeriodoComImposto ?? c.gastoPeriodo,
+                gasto: c.gastoPeriodo,
                 funilRotulo: c.funilRotulo,
                 origem: c.origemFunil,
               }))}
