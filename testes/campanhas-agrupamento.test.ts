@@ -21,7 +21,6 @@ function dados(parcial: Partial<DadosBrutos> = {}): DadosBrutos {
     campanhas: [],
     metricas: [],
     vendas: [],
-    imposto: [],
     frescor: { ultimaMetrica: null, ultimaSincronizacaoMeta: null, ultimaVenda: null },
     ...parcial,
   };

@@ -57,15 +57,6 @@ export interface VendaLinha {
   comprador: string;
 }
 
-export interface ImpostoConfig {
-  iss: number;
-  pisCofins: number;
-  modo: "soma_simples" | "cascata";
-  vigenciaInicio: string;
-  vigenciaFim: string | null;
-  fonte: string;
-}
-
 export interface Frescor {
   ultimaMetrica: string | null;
   ultimaSincronizacaoMeta: string | null;
@@ -78,7 +69,6 @@ export interface DadosBrutos {
   campanhas: CampanhaLinha[];
   metricas: MetricaDia[];
   vendas: VendaLinha[];
-  imposto: ImpostoConfig[];
   frescor: Frescor;
 }
 
@@ -103,22 +93,11 @@ export function intervalo(periodo: Periodo, hoje: string): { de: string; ate: st
   return { de: ini.toISOString().slice(0, 10), ate: hoje };
 }
 
-// Fator do imposto estimado da Meta vigente num dia. null = não configurado ou vencido:
-// nesse caso o painel mostra só o gasto da API e diz que o custo com imposto não está configurado.
-export function fatorImposto(configs: ImpostoConfig[], dia: string): number | null {
-  const c = configs
-    .filter((x) => x.vigenciaInicio <= dia && (!x.vigenciaFim || dia <= x.vigenciaFim))
-    .sort((a, b) => (a.vigenciaInicio < b.vigenciaInicio ? 1 : -1))[0];
-  if (!c) return null;
-  return c.modo === "cascata" ? (1 + c.iss) * (1 + c.pisCofins) : 1 + c.iss + c.pisCofins;
-}
-
 export interface TotaisFunil {
   funil: string; // chave; "sem-funil" agrupa o que não foi classificado
   rotulo: string;
   papel: PapelFunil | "sem-funil";
-  gasto: number; // gasto da API da Meta
-  gastoComImposto: number | null; // estimativa; null se o imposto não está configurado
+  gasto: number; // gasto da API da Meta, igual ao do Gerenciador de Anúncios (sem imposto estimado)
   impressoes: number;
   cliques: number;
   vendas: number; // aprovadas, BRL
@@ -128,8 +107,8 @@ export interface TotaisFunil {
   vendasOutraMoeda: number;
   ctr: number | null;
   cpm: number | null;
-  cpa: number | null; // gasto com imposto (ou da API, se sem imposto) / vendas
-  roas: number | null; // receita / gasto com imposto (ou da API, se sem imposto)
+  cpa: number | null; // gasto / vendas aprovadas
+  roas: number | null; // receita / gasto
 }
 
 export interface PontoDia {
@@ -155,7 +134,6 @@ export interface CampanhaResumo extends CampanhaLinha {
   origemFunil: OrigemFunil;
   funilRotulo: string;
   gastoPeriodo: number;
-  gastoPeriodoComImposto: number | null;
   impressoes: number;
   cliques: number;
   ctr: number | null;
@@ -168,7 +146,7 @@ export interface Dashboard {
   ate: string;
   total: TotaisFunil;
   funis: TotaisFunil[];
-  cidades: { cidade: string; gasto: number; gastoComImposto: number | null }[];
+  cidades: { cidade: string; gasto: number }[];
   serie: PontoDia[];
   etapas: EtapaPassagem[];
   campanhas: CampanhaResumo[];
@@ -176,7 +154,6 @@ export interface Dashboard {
   qualidade: {
     campanhasSemFunil: CampanhaLinha[];
     produtosSemFunil: { produto: string; vendas: number; valor: number }[];
-    impostoConfigurado: boolean;
   };
   frescor: Frescor;
 }
@@ -193,7 +170,6 @@ function vazio(funil: string, rotulo: string, papel: TotaisFunil["papel"]): Tota
     rotulo,
     papel,
     gasto: 0,
-    gastoComImposto: 0,
     impressoes: 0,
     cliques: 0,
     vendas: 0,
@@ -209,13 +185,12 @@ function vazio(funil: string, rotulo: string, papel: TotaisFunil["papel"]): Tota
 }
 
 function fechar(t: TotaisFunil): TotaisFunil {
-  const base = t.gastoComImposto ?? t.gasto;
   return {
     ...t,
     ctr: razao(t.cliques, t.impressoes) === null ? null : (t.cliques / t.impressoes) * 100,
     cpm: t.impressoes > 0 ? (t.gasto / t.impressoes) * 1000 : null,
-    cpa: razao(base, t.vendas),
-    roas: razao(t.receita, base),
+    cpa: razao(t.gasto, t.vendas),
+    roas: razao(t.receita, t.gasto),
   };
 }
 
@@ -272,9 +247,8 @@ export function montarDashboard(dados: DadosBrutos, periodo: Periodo, hoje: stri
     if (!p) serie.set(dia, (p = { dia, gasto: 0, receita: 0 }));
     return p;
   };
-  const porCidade = new Map<string, { gasto: number; gastoComImposto: number | null }>();
-  const gastoCampanha = new Map<string, { gasto: number; comImposto: number | null; imp: number; cli: number }>();
-  let impostoOk = true;
+  const porCidade = new Map<string, number>();
+  const gastoCampanha = new Map<string, { gasto: number; imp: number; cli: number }>();
 
   for (const m of dados.metricas) {
     if (!noPeriodo(m.dia)) continue;
@@ -284,27 +258,20 @@ export function montarDashboard(dados: DadosBrutos, periodo: Periodo, hoje: stri
       fora.gasto += m.gasto;
       continue;
     }
-    const fator = fatorImposto(dados.imposto, m.dia);
-    if (fator === null) impostoOk = false;
     const t = obter(ef.funil);
     t.gasto += m.gasto;
-    t.gastoComImposto = t.gastoComImposto === null || fator === null ? null : t.gastoComImposto + m.gasto * fator;
     t.impressoes += m.impressoes;
     t.cliques += m.cliques;
     ponto(m.dia).gasto += m.gasto;
 
-    const c = gastoCampanha.get(m.metaCampaignId) ?? { gasto: 0, comImposto: 0, imp: 0, cli: 0 };
+    const c = gastoCampanha.get(m.metaCampaignId) ?? { gasto: 0, imp: 0, cli: 0 };
     c.gasto += m.gasto;
-    c.comImposto = c.comImposto === null || fator === null ? null : c.comImposto + m.gasto * fator;
     c.imp += m.impressoes;
     c.cli += m.cliques;
     gastoCampanha.set(m.metaCampaignId, c);
 
     if (ef.funil === "presencial" && m.cidade) {
-      const cd = porCidade.get(m.cidade) ?? { gasto: 0, gastoComImposto: 0 };
-      cd.gasto += m.gasto;
-      cd.gastoComImposto = cd.gastoComImposto === null || fator === null ? null : cd.gastoComImposto + m.gasto * fator;
-      porCidade.set(m.cidade, cd);
+      porCidade.set(m.cidade, (porCidade.get(m.cidade) ?? 0) + m.gasto);
     }
   }
 
@@ -349,7 +316,6 @@ export function montarDashboard(dados: DadosBrutos, periodo: Periodo, hoje: stri
 
   const soma = funis.reduce((acc, t) => {
     acc.gasto += t.gasto;
-    acc.gastoComImposto = acc.gastoComImposto === null || t.gastoComImposto === null ? null : acc.gastoComImposto + t.gastoComImposto;
     acc.impressoes += t.impressoes;
     acc.cliques += t.cliques;
     acc.vendas += t.vendas;
@@ -396,7 +362,6 @@ export function montarDashboard(dados: DadosBrutos, periodo: Periodo, hoje: stri
         origemFunil: ef.origem,
         funilRotulo: ef.origem === "fora" ? "Fora do escopo" : (ef.funil && rotulos.get(ef.funil)?.rotulo) || "Sem funil",
         gastoPeriodo: g?.gasto ?? 0,
-        gastoPeriodoComImposto: g ? g.comImposto : 0,
         impressoes: g?.imp ?? 0,
         cliques: g?.cli ?? 0,
         ctr: g && g.imp > 0 ? (g.cli / g.imp) * 100 : null,
@@ -412,7 +377,7 @@ export function montarDashboard(dados: DadosBrutos, periodo: Periodo, hoje: stri
     total,
     funis,
     cidades: [...porCidade.entries()]
-      .map(([cidade, v]) => ({ cidade, ...v }))
+      .map(([cidade, gasto]) => ({ cidade, gasto }))
       .sort((a, b) => b.gasto - a.gasto),
     serie: [...serie.values()].sort((a, b) => (a.dia < b.dia ? -1 : 1)),
     etapas,
@@ -423,7 +388,6 @@ export function montarDashboard(dados: DadosBrutos, periodo: Periodo, hoje: stri
       produtosSemFunil: [...semProduto.entries()]
         .map(([produto, v]) => ({ produto, ...v }))
         .sort((a, b) => b.vendas - a.vendas),
-      impostoConfigurado: impostoOk && dados.imposto.length > 0,
     },
     frescor: dados.frescor,
   };
@@ -443,10 +407,6 @@ interface LinhaVenda {
   dia: string | Date; funil: string | null; produto: string; status: string; moeda: string;
   valor: string | number | null; comprador: string;
 }
-interface LinhaImposto {
-  iss: string | number; pis_cofins: string | number; modo: "soma_simples" | "cascata";
-  vigencia_inicio: string | Date; vigencia_fim: string | Date | null; fonte: string;
-}
 interface LinhaFrescor {
   ultima_metrica: string | Date | null; ultima_sincronizacao_meta: string | Date | null; ultima_venda: string | Date | null;
 }
@@ -463,7 +423,7 @@ export async function lerDados(
   cadastro: { funis: FunilCadastro[]; atribuicoes: Atribuicao[] }
 ): Promise<DadosBrutos> {
   const { de } = intervalo(periodo, hoje);
-  const [campanhas, metricas, vendas, imposto, frescor] = await Promise.all([
+  const [campanhas, metricas, vendas, frescor] = await Promise.all([
     leitor.consultar<LinhaCampanha>(
       "select meta_campaign_id, nome, status, objetivo, funil, cidade, gasto_total, ultima_data from v_gestao_campanhas"
     ),
@@ -475,7 +435,6 @@ export async function lerDados(
       "select dia, funil, produto, status, moeda, valor, comprador from v_gestao_vendas where dia >= $1 and dia <= $2",
       [de, hoje]
     ),
-    leitor.consultar<LinhaImposto>("select iss, pis_cofins, modo, vigencia_inicio, vigencia_fim, fonte from v_gestao_imposto"),
     leitor.consultar<LinhaFrescor>("select ultima_metrica, ultima_sincronizacao_meta, ultima_venda from v_gestao_frescor"),
   ]);
 
@@ -509,14 +468,6 @@ export async function lerDados(
       moeda: v.moeda,
       valor: num(v.valor),
       comprador: v.comprador,
-    })),
-    imposto: imposto.map((i) => ({
-      iss: num(i.iss),
-      pisCofins: num(i.pis_cofins),
-      modo: i.modo,
-      vigenciaInicio: dia(i.vigencia_inicio),
-      vigenciaFim: i.vigencia_fim ? dia(i.vigencia_fim) : null,
-      fonte: i.fonte,
     })),
     frescor: frescor[0]
       ? {
