@@ -130,6 +130,14 @@ alter function public.gestao_funil_da_campanha(text, text) set search_path = pub
 alter function public.gestao_funil_do_produto(text) set search_path = public, pg_temp;
 alter function public.gestao_cidade_da_campanha(text) set search_path = public, pg_temp;
 
+-- As funções leem as tabelas mapa_* (fechadas por RLS para todo mundo, inclusive leitura_gestao).
+-- Por isso rodam com os direitos do dono (security definer, search_path fixo acima) e o
+-- execute fica só com a role leitura_gestao (seção 6). Sem isso a aba dá "permission denied".
+-- Corrigido em produção em 16/11/2026 (migração gestao_funcoes_security_definer).
+alter function public.gestao_funil_da_campanha(text, text) security definer;
+alter function public.gestao_funil_do_produto(text) security definer;
+alter function public.gestao_cidade_da_campanha(text) security definer;
+
 -- 5. Views que o app lê ----------------------------------------------------------------------
 create or replace view public.v_gestao_campanhas as
 select
