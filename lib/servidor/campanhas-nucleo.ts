@@ -24,10 +24,17 @@ export interface CampanhaLinha {
   nome: string;
   status: string;
   objetivo: string | null;
-  funil: string | null;
+  funil: string | null; // SUGESTÃO automática pelo nome (SQL); o agrupamento manual vale por cima
   cidade: string | null;
   gastoTotal: number;
   ultimaData: string | null;
+}
+
+// Agrupamento manual salvo no app. Vale por cima da sugestão por nome (CampanhaLinha.funil).
+export interface Atribuicao {
+  metaCampaignId: string;
+  funil: string | null; // chave do funil; null com foraDoEscopo = campanha ignorada
+  foraDoEscopo: boolean;
 }
 
 export interface MetricaDia {
@@ -67,6 +74,7 @@ export interface Frescor {
 
 export interface DadosBrutos {
   funis: FunilCadastro[];
+  atribuicoes: Atribuicao[];
   campanhas: CampanhaLinha[];
   metricas: MetricaDia[];
   vendas: VendaLinha[];
@@ -140,7 +148,11 @@ export interface EtapaPassagem {
   taxa: number | null;
 }
 
+export type OrigemFunil = "manual" | "sugestao" | "nenhuma" | "fora";
+
 export interface CampanhaResumo extends CampanhaLinha {
+  funilEfetivo: string | null; // manual, senão a sugestão (se o funil existe)
+  origemFunil: OrigemFunil;
   funilRotulo: string;
   gastoPeriodo: number;
   gastoPeriodoComImposto: number | null;
@@ -160,6 +172,7 @@ export interface Dashboard {
   serie: PontoDia[];
   etapas: EtapaPassagem[];
   campanhas: CampanhaResumo[];
+  foraDoEscopo: { campanhas: number; gasto: number };
   qualidade: {
     campanhasSemFunil: CampanhaLinha[];
     produtosSemFunil: { produto: string; vendas: number; valor: number }[];
@@ -212,9 +225,32 @@ function semGastoProprio(t: TotaisFunil): TotaisFunil {
   return t.gasto > 0 ? t : { ...t, cpa: null, roas: null };
 }
 
+// Funil de uma campanha: o agrupamento manual vence; sem ele vale a sugestão pelo nome,
+// desde que o funil exista no cadastro.
+export function funilDaCampanha(
+  metaCampaignId: string,
+  sugestao: string | null,
+  atribuicoes: Map<string, Atribuicao>,
+  funisExistentes: Set<string>
+): { funil: string | null; origem: OrigemFunil } {
+  const a = atribuicoes.get(metaCampaignId);
+  if (a) {
+    if (a.foraDoEscopo) return { funil: null, origem: "fora" };
+    if (a.funil && funisExistentes.has(a.funil)) return { funil: a.funil, origem: "manual" };
+  }
+  if (sugestao && funisExistentes.has(sugestao)) return { funil: sugestao, origem: "sugestao" };
+  return { funil: null, origem: "nenhuma" };
+}
+
 export function montarDashboard(dados: DadosBrutos, periodo: Periodo, hoje: string): Dashboard {
   const { de, ate } = intervalo(periodo, hoje);
   const rotulos = new Map(dados.funis.map((f) => [f.chave, f]));
+  const atribuicoes = new Map(dados.atribuicoes.map((a) => [a.metaCampaignId, a]));
+  const existentes = new Set(dados.funis.map((f) => f.chave));
+  const sugestaoDaCampanha = new Map(dados.campanhas.map((c) => [c.metaCampaignId, c.funil]));
+  const efetivo = (id: string, sugestaoLinha: string | null) =>
+    funilDaCampanha(id, sugestaoDaCampanha.get(id) ?? sugestaoLinha, atribuicoes, existentes);
+  const fora = { campanhas: new Set<string>(), gasto: 0 };
   const noPeriodo = (dia: string) => dia >= de && dia <= ate;
 
   const porFunil = new Map<string, TotaisFunil>();
@@ -242,9 +278,15 @@ export function montarDashboard(dados: DadosBrutos, periodo: Periodo, hoje: stri
 
   for (const m of dados.metricas) {
     if (!noPeriodo(m.dia)) continue;
+    const ef = efetivo(m.metaCampaignId, m.funil);
+    if (ef.origem === "fora") {
+      fora.campanhas.add(m.metaCampaignId);
+      fora.gasto += m.gasto;
+      continue;
+    }
     const fator = fatorImposto(dados.imposto, m.dia);
     if (fator === null) impostoOk = false;
-    const t = obter(m.funil);
+    const t = obter(ef.funil);
     t.gasto += m.gasto;
     t.gastoComImposto = t.gastoComImposto === null || fator === null ? null : t.gastoComImposto + m.gasto * fator;
     t.impressoes += m.impressoes;
@@ -258,7 +300,7 @@ export function montarDashboard(dados: DadosBrutos, periodo: Periodo, hoje: stri
     c.cli += m.cliques;
     gastoCampanha.set(m.metaCampaignId, c);
 
-    if (m.funil === "presencial" && m.cidade) {
+    if (ef.funil === "presencial" && m.cidade) {
       const cd = porCidade.get(m.cidade) ?? { gasto: 0, gastoComImposto: 0 };
       cd.gasto += m.gasto;
       cd.gastoComImposto = cd.gastoComImposto === null || fator === null ? null : cd.gastoComImposto + m.gasto * fator;
@@ -347,9 +389,12 @@ export function montarDashboard(dados: DadosBrutos, periodo: Periodo, hoje: stri
   const campanhas: CampanhaResumo[] = dados.campanhas
     .map((c) => {
       const g = gastoCampanha.get(c.metaCampaignId);
+      const ef = efetivo(c.metaCampaignId, c.funil);
       return {
         ...c,
-        funilRotulo: (c.funil && rotulos.get(c.funil)?.rotulo) || "Sem funil",
+        funilEfetivo: ef.funil,
+        origemFunil: ef.origem,
+        funilRotulo: ef.origem === "fora" ? "Fora do escopo" : (ef.funil && rotulos.get(ef.funil)?.rotulo) || "Sem funil",
         gastoPeriodo: g?.gasto ?? 0,
         gastoPeriodoComImposto: g ? g.comImposto : 0,
         impressoes: g?.imp ?? 0,
@@ -372,8 +417,9 @@ export function montarDashboard(dados: DadosBrutos, periodo: Periodo, hoje: stri
     serie: [...serie.values()].sort((a, b) => (a.dia < b.dia ? -1 : 1)),
     etapas,
     campanhas,
+    foraDoEscopo: { campanhas: fora.campanhas.size, gasto: fora.gasto },
     qualidade: {
-      campanhasSemFunil: dados.campanhas.filter((c) => !c.funil),
+      campanhasSemFunil: campanhas.filter((c) => c.origemFunil === "nenhuma"),
       produtosSemFunil: [...semProduto.entries()]
         .map(([produto, v]) => ({ produto, ...v }))
         .sort((a, b) => b.vendas - a.vendas),
@@ -385,7 +431,6 @@ export function montarDashboard(dados: DadosBrutos, periodo: Periodo, hoje: stri
 
 // --- Leitura das views --------------------------------------------------------
 
-interface LinhaFunil { chave: string; rotulo: string; papel: PapelFunil; ordem: number }
 interface LinhaCampanha {
   meta_campaign_id: string; nome: string; status: string; objetivo: string | null;
   funil: string | null; cidade: string | null; gasto_total: string | number | null; ultima_data: string | Date | null;
@@ -410,10 +455,15 @@ const num = (v: string | number | null | undefined): number => (v === null || v 
 const dia = (v: string | Date): string => (typeof v === "string" ? v.slice(0, 10) : v.toISOString().slice(0, 10));
 const dataOuNulo = (v: string | Date | null): string | null => (v === null ? null : typeof v === "string" ? v : v.toISOString());
 
-export async function lerDados(leitor: Leitor, periodo: Periodo, hoje: string): Promise<DadosBrutos> {
+// Funis e agrupamento manual vêm do banco da gestão (`cadastro`); o resto, do Dashboard-italo.
+export async function lerDados(
+  leitor: Leitor,
+  periodo: Periodo,
+  hoje: string,
+  cadastro: { funis: FunilCadastro[]; atribuicoes: Atribuicao[] }
+): Promise<DadosBrutos> {
   const { de } = intervalo(periodo, hoje);
-  const [funis, campanhas, metricas, vendas, imposto, frescor] = await Promise.all([
-    leitor.consultar<LinhaFunil>("select chave, rotulo, papel, ordem from gestao_funis order by ordem"),
+  const [campanhas, metricas, vendas, imposto, frescor] = await Promise.all([
     leitor.consultar<LinhaCampanha>(
       "select meta_campaign_id, nome, status, objetivo, funil, cidade, gasto_total, ultima_data from v_gestao_campanhas"
     ),
@@ -430,7 +480,8 @@ export async function lerDados(leitor: Leitor, periodo: Periodo, hoje: string): 
   ]);
 
   return {
-    funis: funis.map((f) => ({ chave: f.chave, rotulo: f.rotulo, papel: f.papel, ordem: Number(f.ordem) })),
+    funis: cadastro.funis,
+    atribuicoes: cadastro.atribuicoes,
     campanhas: campanhas.map((c) => ({
       metaCampaignId: c.meta_campaign_id,
       nome: c.nome,

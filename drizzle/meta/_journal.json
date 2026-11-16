@@ -64,6 +64,13 @@
       "when": 1790887410731,
       "tag": "0008_magenta_lord_hawal",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794864047354,
+      "tag": "0009_dashboard_campanhas",
+      "breakpoints": true
     }
   ]
 }

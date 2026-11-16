@@ -441,3 +441,44 @@ export const mensagens = pgTable(
     index("mensagens_por_destinatario").on(t.destinatarioId, t.criadoEm),
   ]
 );
+
+// ---------- Dashboard de campanhas (aba Campanhas) ----------
+
+// Funis do dashboard. As chaves iniciais batem com as que as views do Dashboard-italo
+// devolvem (db/dashboard-italo/001-views-funil.sql). Dá para criar funis novos pelo app.
+export const funisCampanha = pgTable(
+  "funis_campanha",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    chave: text("chave").notNull(),
+    rotulo: text("rotulo").notNull(),
+    // entrada: tem campanha própria; etapa/backend/complemento: só receita (sem gasto próprio).
+    papel: text("papel").notNull().default("entrada"),
+    ordem: integer("ordem").notNull().default(100),
+    criadoEm: criadoEm(),
+  },
+  (t) => [
+    uniqueIndex("funis_campanha_chave_unica").on(t.chave),
+    check("funis_campanha_papel", sql`${t.papel} in ('entrada','etapa','backend','complemento')`),
+    check("funis_campanha_rotulo", sql`length(btrim(${t.rotulo})) between 1 and 80`),
+  ]
+);
+
+// Agrupamento manual: qual funil cada campanha da Meta integra. Vale por cima da sugestão
+// automática (nome da campanha). `funil_id` nulo + `fora_do_escopo` = campanha ignorada
+// (sai da fila de "sem funil"). A campanha é identificada pelo id da Meta, não pelo nome.
+export const campanhaFunil = pgTable(
+  "campanha_funil",
+  {
+    metaCampaignId: text("meta_campaign_id").primaryKey(),
+    funilId: uuid("funil_id").references(() => funisCampanha.id),
+    foraDoEscopo: boolean("fora_do_escopo").notNull().default(false),
+    nomeNaEpoca: text("nome_na_epoca").notNull(),
+    definidoPor: uuid("definido_por").references(() => usuarios.id),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("campanha_funil_por_funil").on(t.funilId),
+    check("campanha_funil_destino", sql`(${t.funilId} is not null) <> ${t.foraDoEscopo}`),
+  ]
+);

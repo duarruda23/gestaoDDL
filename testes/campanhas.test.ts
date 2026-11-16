@@ -32,6 +32,7 @@ function dados(parcial: Partial<DadosBrutos> = {}): DadosBrutos {
       { chave: "grupo_vip", rotulo: "Grupo VIP", papel: "etapa", ordem: 7 },
       { chave: "mentoria", rotulo: "Mentoria", papel: "backend", ordem: 8 },
     ],
+    atribuicoes: [],
     campanhas: [],
     metricas: [],
     vendas: [],
@@ -303,7 +304,14 @@ describe("db/dashboard-italo/001-views-funil.sql", () => {
   });
 
   it("de ponta a ponta: lê as views e monta o dashboard", async () => {
-    const d = montarDashboard(await lerDados(leitor, 30, HOJE), 30, HOJE);
+    const cadastro = {
+      funis: dados().funis.concat([
+        { chave: "precificacao", rotulo: "Precificação", papel: "entrada", ordem: 2 },
+        { chave: "analise_perfil", rotulo: "Análise de Perfil", papel: "complemento", ordem: 9 },
+      ]),
+      atribuicoes: [],
+    };
+    const d = montarDashboard(await lerDados(leitor, 30, HOJE, cadastro), 30, HOJE);
     const desafio = d.funis.find((f) => f.funil === "desafio")!;
     expect(desafio.gasto).toBe(100);
     expect(desafio.vendas).toBe(1);

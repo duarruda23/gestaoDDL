@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { dashboardItaloConfigurado, obterLeitorDashboardItalo } from "@/db/dashboard-italo";
+import { obterBanco } from "@/db";
 import { exigirGestor } from "@/lib/servidor/dal";
+import { listarAtribuicoes, listarFunis } from "@/lib/servidor/campanhas-funis-nucleo";
 import {
   PERIODOS,
   hojeEmRecife,
@@ -12,6 +14,7 @@ import {
 } from "@/lib/servidor/campanhas-nucleo";
 import { dataCurta, dataHora, dinheiro, percentual, quantidade, razaoTexto } from "@/lib/campanhas-formato";
 import { GraficoDiario } from "@/components/campanhas/GraficoDiario";
+import { AgruparCampanhas } from "@/components/campanhas/AgruparCampanhas";
 import { TituloPagina, TituloSecao, Vazio } from "@/components/ui";
 
 export const metadata = { title: "Campanhas · Gestão Donas de Loja" };
@@ -21,6 +24,7 @@ const ABAS = [
   { valor: "geral", rotulo: "Visão geral" },
   { valor: "funis", rotulo: "Por funil" },
   { valor: "campanhas", rotulo: "Campanhas" },
+  { valor: "agrupar", rotulo: "Agrupar" },
   { valor: "qualidade", rotulo: "Qualidade" },
 ] as const;
 type Aba = (typeof ABAS)[number]["valor"];
@@ -188,7 +192,7 @@ function PorFunil({ d }: { d: Dashboard }) {
 }
 
 function Campanhas({ d, funil }: { d: Dashboard; funil?: string }) {
-  const lista = funil ? d.campanhas.filter((c) => (funil === "sem-funil" ? !c.funil : c.funil === funil)) : d.campanhas;
+  const lista = funil ? d.campanhas.filter((c) => (funil === "sem-funil" ? c.origemFunil === "nenhuma" : c.funilEfetivo === funil)) : d.campanhas;
   const filtros = [
     { rotulo: "Todos", ativo: !funil, url: href("campanhas", d.periodo) },
     ...d.funis
@@ -263,7 +267,7 @@ function Qualidade({ d }: { d: Dashboard }) {
         ) : (
           <Vazio>Toda campanha tem funil.</Vazio>
         )}
-        <p className="mt-2 text-xs text-ink-subtle">Para classificar, inclua uma regra em <code>mapa_campanha_funil</code> no Supabase do Dashboard-italo.</p>
+        <p className="mt-2 text-xs text-ink-subtle">Para classificar, use a aba <Link href={href("agrupar", d.periodo)} className="underline">Agrupar</Link>.</p>
       </section>
       <section>
         <TituloSecao tom={q.produtosSemFunil.length ? "danger" : undefined}>Produtos vendidos sem funil ({q.produtosSemFunil.length})</TituloSecao>
@@ -315,7 +319,9 @@ export default async function PaginaCampanhas({ searchParams }: PageProps<"/camp
   } else {
     try {
       const hoje = hojeEmRecife();
-      d = montarDashboard(await lerDados(obterLeitorDashboardItalo(), periodo, hoje), periodo, hoje);
+      const banco = obterBanco();
+      const [funis, atribuicoes] = await Promise.all([listarFunis(banco), listarAtribuicoes(banco)]);
+      d = montarDashboard(await lerDados(obterLeitorDashboardItalo(), periodo, hoje, { funis, atribuicoes }), periodo, hoje);
     } catch (e) {
       console.error("campanhas: falha ao ler o Dashboard-italo", e instanceof Error ? e.message : e);
       erro = "Não consegui ler os dados do Dashboard-italo agora. Tente de novo em instantes.";
@@ -341,6 +347,19 @@ export default async function PaginaCampanhas({ searchParams }: PageProps<"/camp
           {aba === "geral" && <Geral d={d} />}
           {aba === "funis" && <PorFunil d={d} />}
           {aba === "campanhas" && <Campanhas d={d} funil={funil} />}
+          {aba === "agrupar" && (
+            <AgruparCampanhas
+              funis={d.funis.filter((f) => f.funil !== "sem-funil").map((f) => ({ chave: f.funil, rotulo: f.rotulo }))}
+              campanhas={d.campanhas.map((c) => ({
+                id: c.metaCampaignId,
+                nome: c.nome,
+                status: c.status,
+                gasto: c.gastoPeriodoComImposto ?? c.gastoPeriodo,
+                funilRotulo: c.funilRotulo,
+                origem: c.origemFunil,
+              }))}
+            />
+          )}
           {aba === "qualidade" && <Qualidade d={d} />}
         </>
       )}

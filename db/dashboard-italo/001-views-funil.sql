@@ -6,6 +6,11 @@
 -- leitura_gestao). Não altera nem apaga nenhuma tabela existente.
 -- Rollback: db/dashboard-italo/001-rollback.sql.
 --
+-- Papel das regras daqui: o funil que as views devolvem para campanhas é só uma SUGESTÃO
+-- pelo nome. O agrupamento que o gestor faz na aba Agrupar do app fica no banco da gestão
+-- (tabelas funis_campanha e campanha_funil, migração 0009) e vale por cima da sugestão.
+-- O funil das VENDAS continua vindo do produto, por mapa_produto_funil.
+--
 -- Regra de ouro: sales.campaign_id é nulo em todas as vendas, então a venda NÃO é
 -- atribuída a campanha. Gasto vem da campanha (tag do nome → funil) e receita vem do
 -- produto (nome → funil). O painel rotula isso.
