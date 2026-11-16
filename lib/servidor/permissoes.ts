@@ -15,6 +15,11 @@ export function podeDelegarAcessos(conta: Conta): boolean {
   return conta.ativo && conta.dono;
 }
 
+// Dashboard de campanhas: só "gestor" (dono e quem gerencia acessos), por decisão do Eduardo (16/11/2026).
+export function podeVerCampanhas(conta: Conta): boolean {
+  return podeGerenciarAcessos(conta);
+}
+
 export type MotivoRecusaAcesso = string;
 
 // Pode `quem` remover (ou restaurar) o acesso de `alvo`? Devolve null se pode,

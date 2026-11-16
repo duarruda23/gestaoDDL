@@ -22,6 +22,7 @@ COPY --from=build --chown=app:app /app/next.config.ts ./
 COPY --from=build --chown=app:app /app/drizzle ./drizzle
 COPY --from=build --chown=app:app /app/db/migrar.mjs ./db/migrar.mjs
 COPY --from=build --chown=app:app /app/db/operacao-dono.mjs ./db/operacao-dono.mjs
+COPY --from=build --chown=app:app /app/db/supabase-ca.pem ./db/supabase-ca.pem
 USER app
 EXPOSE 3000
 CMD ["node_modules/.bin/next", "start", "-p", "3000"]

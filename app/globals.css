@@ -243,7 +243,8 @@ textarea.dl-input { min-height: 88px; resize: vertical; }
 .dl-seg { display: inline-flex; gap: 2px; padding: 4px; border-radius: var(--radius-full); background: var(--surface-raised); border: 1px solid var(--line); }
 .dl-seg-opt { font-family: var(--font-sans); border: 0; background: transparent; color: var(--ink-muted); font-size: 13px; line-height: 18px; font-weight: 600; padding: 6px 14px; border-radius: var(--radius-full); cursor: pointer; }
 .dl-seg-opt:hover { color: var(--ink); }
-.dl-seg-opt[aria-pressed="true"] { background: var(--brand-action); color: var(--on-brand); font-weight: 700; }
+.dl-seg-opt[aria-pressed="true"], .dl-seg-opt[aria-current="true"] { background: var(--brand-action); color: var(--on-brand); font-weight: 700; }
+a.dl-seg-opt { text-decoration: none; display: inline-block; }
 
 /* ---- Eyebrow + título (padrão de cabeçalho do site) ---- */
 .dl-eyebrow { margin: 0; font-size: 12px; line-height: 16px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--brand-text); }

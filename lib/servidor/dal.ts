@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { obterBanco } from "@/db";
 import { COOKIE_SESSAO } from "./cookie";
+import { podeVerCampanhas } from "./permissoes";
 import { validarSessao, type ContaDaSessao } from "./sessao-nucleo";
 
 // Camada de acesso a dados (DAL). A checagem de verdade acontece aqui, em
@@ -22,5 +23,12 @@ export const obterConta = cache(async (): Promise<ContaDaSessao | null> => {
 export async function exigirConta(): Promise<ContaDaSessao> {
   const conta = await obterConta();
   if (!conta) redirect("/entrar");
+  return conta;
+}
+
+// Para telas só de gestor: sem sessão vai para /entrar; logada sem permissão volta ao início.
+export async function exigirGestor(): Promise<ContaDaSessao> {
+  const conta = await exigirConta();
+  if (!podeVerCampanhas(conta)) redirect("/");
   return conta;
 }

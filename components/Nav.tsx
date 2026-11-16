@@ -4,8 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from "motion/react";
-import { CalendarDays, ChartColumn, Ellipsis, House, Inbox, LayoutGrid, LogOut, MessageCircle, Moon, Plus, Sun, Users } from "lucide-react";
-import { ROTAS, rotaPronta } from "@/lib/rotas";
+import { CalendarDays, ChartColumn, Megaphone, Ellipsis, House, Inbox, LayoutGrid, LogOut, MessageCircle, Moon, Plus, Sun, Users } from "lucide-react";
+import { ROTAS, rotaPronta, rotaVisivel } from "@/lib/rotas";
 import { Avatar } from "./ui";
 
 // Navegação do sistema real: a conta vem do servidor (sessão) e sair é uma
@@ -13,6 +13,7 @@ import { Avatar } from "./ui";
 
 export interface ContaNav {
   nome: string;
+  gestor?: boolean;
 }
 
 type Sair = () => Promise<void>;
@@ -68,6 +69,7 @@ const ITENS_MAIS = [
   { href: "/cobrancas", rotulo: "Cobranças", icone: MessageCircle },
   { href: "/series", rotulo: "Séries recorrentes", icone: CalendarDays },
   { href: "/equipe", rotulo: "Equipe e acessos", icone: Users },
+  { href: "/campanhas", rotulo: "Campanhas", icone: Megaphone },
 ];
 
 const CLASSE_ITEM =
@@ -79,18 +81,20 @@ function FolhaMais({
   tema,
   alternarTema,
   sair,
+  gestor,
 }: {
   aberta: boolean;
   onFechar: () => void;
   tema: "dark" | "light";
   alternarTema: () => void;
   sair: Sair;
+  gestor: boolean;
 }) {
   const pathname = usePathname();
   const reduzir = useReducedMotion();
   const [velocidadeSaida, setVelocidadeSaida] = useState(0);
   const folha = useRef<HTMLDivElement>(null);
-  const itens = ITENS_MAIS.filter((i) => rotaPronta(i.href));
+  const itens = ITENS_MAIS.filter((i) => rotaVisivel(i.href, gestor));
 
   useEffect(() => {
     if (!aberta) return;
@@ -190,11 +194,11 @@ function FolhaMais({
   );
 }
 
-function BarraAbas({ tema, alternarTema, sair }: { tema: "dark" | "light"; alternarTema: () => void; sair: Sair }) {
+function BarraAbas({ tema, alternarTema, sair, gestor }: { tema: "dark" | "light"; alternarTema: () => void; sair: Sair; gestor: boolean }) {
   const pathname = usePathname();
   const [maisAberta, setMaisAberta] = useState(false);
   const fecharMais = useCallback(() => setMaisAberta(false), []);
-  const noMais = ITENS_MAIS.some((i) => pathname.startsWith(i.href));
+  const noMais = ITENS_MAIS.some((i) => rotaVisivel(i.href, gestor) && pathname.startsWith(i.href));
   const abas = [
     { href: "/", rotulo: "Início", icone: House },
     { href: "/quadro", rotulo: "Quadro", icone: LayoutGrid },
@@ -237,7 +241,7 @@ function BarraAbas({ tema, alternarTema, sair }: { tema: "dark" | "light"; alter
           <span>Mais</span>
         </button>
       </nav>
-      <FolhaMais aberta={maisAberta} onFechar={fecharMais} tema={tema} alternarTema={alternarTema} sair={sair} />
+      <FolhaMais aberta={maisAberta} onFechar={fecharMais} tema={tema} alternarTema={alternarTema} sair={sair} gestor={gestor} />
     </>
   );
 }
@@ -246,7 +250,8 @@ export function Nav({ conta, sair }: { conta: ContaNav | null; sair: Sair }) {
   const pathname = usePathname();
   const [tema, alternarTema] = useTema();
   const rolou = useRolou();
-  const itens = ROTAS.filter((r) => r.pronta);
+  const gestor = Boolean(conta?.gestor);
+  const itens = ROTAS.filter((r) => rotaVisivel(r.href, gestor));
 
   return (
     <>
@@ -301,7 +306,7 @@ export function Nav({ conta, sair }: { conta: ContaNav | null; sair: Sair }) {
           </nav>
         )}
       </header>
-      {conta && <BarraAbas tema={tema} alternarTema={alternarTema} sair={sair} />}
+      {conta && <BarraAbas tema={tema} alternarTema={alternarTema} sair={sair} gestor={gestor} />}
     </>
   );
 }

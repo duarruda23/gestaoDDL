@@ -4,6 +4,7 @@ import "./globals.css";
 import { Nav } from "@/components/Nav";
 import { AvisosProvider } from "@/components/Avisos";
 import { obterConta } from "@/lib/servidor/dal";
+import { podeVerCampanhas } from "@/lib/servidor/permissoes";
 import { sair } from "./entrar/acoes";
 
 const montserrat = Montserrat({
@@ -33,7 +34,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full flex flex-col">
         <AvisosProvider>
-          <Nav conta={conta ? { nome: conta.nome } : null} sair={sair} />
+          <Nav conta={conta ? { nome: conta.nome, gestor: podeVerCampanhas(conta) } : null} sair={sair} />
           <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-28 md:pb-16">{children}</main>
         </AvisosProvider>
       </body>
