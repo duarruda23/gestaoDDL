@@ -41,8 +41,8 @@ function href(aba: Aba, periodo: number, funil?: string): string {
 
 function Kpi({ rotulo, valor, nota }: { rotulo: string; valor: string; nota?: string }) {
   return (
-    <div className="dl-stat dl-stat-zero">
-      <p className="dl-stat-value !text-[22px] sm:!text-[26px]">{valor}</p>
+    <div className="dl-stat dl-stat-neutral dl-kpi">
+      <p className="dl-stat-value dl-kpi-valor">{valor}</p>
       <p className="dl-stat-label">{rotulo}</p>
       {nota && <p className="mt-1 text-[11px] leading-4 text-ink-subtle">{nota}</p>}
     </div>
@@ -103,13 +103,14 @@ function Geral({ d }: { d: Dashboard }) {
   const gasto = t.gastoComImposto ?? t.gasto;
   return (
     <>
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Kpi rotulo={t.gastoComImposto !== null ? "Gasto com imposto (estim.)" : "Gasto (API)"} valor={dinheiro(gasto)} nota={t.gastoComImposto !== null ? `API: ${dinheiro(t.gasto)}` : undefined} />
         <Kpi rotulo="Vendas aprovadas" valor={quantidade(t.vendas)} />
         <Kpi rotulo="Receita Hotmart" valor={dinheiro(t.receita)} nota={t.reembolsado > 0 ? `Reembolsos/chargebacks: ${dinheiro(t.reembolsado)}` : undefined} />
         <Kpi rotulo="ROAS" valor={razaoTexto(t.roas)} />
         <Kpi rotulo="CPA" valor={dinheiro(t.cpa)} />
-        <Kpi rotulo="CTR · CPM" valor={`${percentual(t.ctr)} · ${dinheiro(t.cpm)}`} />
+        <Kpi rotulo="CTR" valor={percentual(t.ctr)} />
+        <Kpi rotulo="CPM" valor={dinheiro(t.cpm)} />
       </section>
       <p className="text-xs text-ink-subtle">{custoNota(d)} Receita e gasto são ligados por produto e por tag da campanha, não por venda.</p>
       <section>
