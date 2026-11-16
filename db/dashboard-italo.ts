@@ -20,9 +20,9 @@ export function obterLeitorDashboardItalo(): Leitor {
   const url = process.env.DASHBOARD_ITALO_DATABASE_URL;
   if (!url) throw new Error("DASHBOARD_ITALO_DATABASE_URL não configurada.");
   // Supabase exige TLS. O certificado do pooler é assinado pela "Supabase Root 2021 CA",
-  // que não está no repositório de confiança do Node: ela vai junto com o app (db/supabase-ca.pem).
+  // que não está no repositório de confiança do Node: ela vai junto com o app (db/supabase-ca.crt).
   // A verificação do certificado fica sempre ligada.
-  const caArquivo = path.join(process.cwd(), "db", "supabase-ca.pem");
+  const caArquivo = path.join(process.cwd(), "db", "supabase-ca.crt");
   const pool = new Pool({
     connectionString: url,
     max: 3,
