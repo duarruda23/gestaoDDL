@@ -1,4 +1,6 @@
 import "server-only";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { Pool } from "pg";
 import type { Leitor } from "@/lib/servidor/campanhas-nucleo";
 
@@ -17,10 +19,14 @@ export function obterLeitorDashboardItalo(): Leitor {
   if (global_.leitorDashboardItalo) return global_.leitorDashboardItalo;
   const url = process.env.DASHBOARD_ITALO_DATABASE_URL;
   if (!url) throw new Error("DASHBOARD_ITALO_DATABASE_URL não configurada.");
+  // Supabase exige TLS. O certificado do pooler é assinado pela "Supabase Root 2021 CA",
+  // que não está no repositório de confiança do Node: ela vai junto com o app (db/supabase-ca.pem).
+  // A verificação do certificado fica sempre ligada.
+  const caArquivo = path.join(process.cwd(), "db", "supabase-ca.pem");
   const pool = new Pool({
     connectionString: url,
     max: 3,
-    ssl: { rejectUnauthorized: true }, // Supabase exige TLS
+    ssl: { rejectUnauthorized: true, ...(existsSync(caArquivo) ? { ca: readFileSync(caArquivo, "utf8") } : {}) },
     statement_timeout: 15_000,
   });
   global_.leitorDashboardItalo = {

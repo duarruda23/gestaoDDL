@@ -46,6 +46,8 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       IA_PROVEDOR: ${IA_PROVEDOR}
       N8N_TOKEN: ${N8N_TOKEN}
+      # Aba Campanhas: leitura do Supabase Dashboard-italo (role leitura_gestao). Vazio = a aba avisa que não está configurada.
+      DASHBOARD_ITALO_DATABASE_URL: ${DASHBOARD_ITALO_DATABASE_URL:-}
       SESSAO_SEGREDO: ${SESSAO_SEGREDO}
       ANEXOS_DIR: /dados/anexos
     volumes:
